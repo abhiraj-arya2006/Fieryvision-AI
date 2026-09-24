@@ -1,0 +1,210 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #050914;
+  --bg2: #08111e;
+  --panel: rgba(8, 15, 28, 0.78);
+  --panel2: rgba(12, 21, 37, 0.88);
+  --border: rgba(130, 180, 255, 0.16);
+  --border2: rgba(130, 180, 255, 0.28);
+  --cyan: #38bdf8;
+  --cyan-glow: #0284c7;
+  --red: #ff4d4d;
+  --orange: #ff9b3d;
+  --green: #53d88b;
+  --blue: #4fa7ff;
+  --amber: #f59e0b;
+}
+
+html, body {
+  background-color: #050914;
+  color: #edf6ff;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Glassmorphism panel styling */
+.glass-panel {
+  background: rgba(8, 15, 28, 0.78);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(130, 180, 255, 0.16);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+.glass-panel-subtle {
+  background: rgba(12, 21, 37, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(130, 180, 255, 0.12);
+}
+
+.glass-panel-hover {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel-hover:hover {
+  border-color: rgba(56, 189, 248, 0.4);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), 0 0 20px rgba(56, 189, 248, 0.12);
+}
+
+/* Glow effects */
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.35);
+}
+
+.glow-red {
+  box-shadow: 0 0 20px rgba(255, 77, 77, 0.45);
+}
+
+.glow-orange {
+  box-shadow: 0 0 20px rgba(255, 155, 61, 0.45);
+}
+
+/* Custom Leaflet Map styling */
+.leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #050914 !important;
+  font-family: inherit;
+}
+
+/* Dark mode Leaflet tile adjustment (converts standard OpenStreetMap to command-center dark mode without any API keys) */
+.dark-tiles {
+  filter: invert(100%) hue-rotate(180deg) brightness(82%) contrast(115%) saturate(0.8) !important;
+}
+
+/* Custom DivIcon Markers with Radar Pulse */
+.fv-marker-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fv-marker-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 12px currentColor;
+  transition: transform 0.2s ease;
+  position: relative;
+  z-index: 10;
+}
+
+.fv-marker-pulse {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: markerPing 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  z-index: 5;
+}
+
+@keyframes markerPing {
+  75%, 100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* Marker color variations */
+.marker-red .fv-marker-dot {
+  background-color: #ff4d4d;
+  color: #ff4d4d;
+}
+.marker-red .fv-marker-pulse {
+  background-color: rgba(255, 77, 77, 0.6);
+}
+
+.marker-orange .fv-marker-dot {
+  background-color: #ff9b3d;
+  color: #ff9b3d;
+}
+.marker-orange .fv-marker-pulse {
+  background-color: rgba(255, 155, 61, 0.6);
+}
+
+.marker-green .fv-marker-dot {
+  background-color: #53d88b;
+  color: #53d88b;
+}
+.marker-green .fv-marker-pulse {
+  background-color: rgba(83, 216, 139, 0.6);
+}
+
+.marker-blue .fv-marker-dot {
+  background-color: #4fa7ff;
+  color: #4fa7ff;
+}
+.marker-blue .fv-marker-pulse {
+  background-color: rgba(79, 167, 255, 0.6);
+}
+
+.marker-white .fv-marker-dot {
+  background-color: #cbd5dd;
+  color: #cbd5dd;
+}
+.marker-white .fv-marker-pulse {
+  background-color: rgba(203, 213, 221, 0.6);
+}
+
+/* Custom Leaflet popup */
+.leaflet-popup-content-wrapper {
+  background: rgba(10, 18, 33, 0.95) !important;
+  color: #edf6ff !important;
+  border: 1px solid rgba(130, 180, 255, 0.3) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(8px) !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-tip {
+  background: rgba(10, 18, 33, 0.95) !important;
+  border: 1px solid rgba(130, 180, 255, 0.3) !important;
+}
+
+.leaflet-popup-content {
+  margin: 12px 16px !important;
+  line-height: 1.4 !important;
+}
+
+.leaflet-tooltip {
+  background: rgba(8, 15, 28, 0.9) !important;
+  color: #edf6ff !important;
+  border: 1px solid rgba(130, 180, 255, 0.25) !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  border-radius: 4px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important;
+  padding: 4px 8px !important;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(5, 9, 20, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(130, 180, 255, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.4);
+}

@@ -1,0 +1,28 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Node & Frontend
+node_modules/
+dist/
+dist-ssr/
+*.log
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

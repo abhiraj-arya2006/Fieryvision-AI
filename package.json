@@ -1,0 +1,26 @@
+{
+  "name": "fieryvision-ai",
+  "version": "1.0.0",
+  "description": "AI-Powered Industrial Fire Risk Detection and Satellite Intelligence Platform for Giaspura, Ludhiana, Punjab",
+  "scripts": {
+    "dev": "node scripts/start-dev.js",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "python -m uvicorn main:app --reload --port 8000 --app-dir backend",
+    "build:frontend": "npm run build --prefix frontend",
+    "test:backend": "python -m pytest",
+    "install:frontend": "npm install --prefix frontend"
+  },
+  "keywords": [
+    "fire-detection",
+    "satellite-intelligence",
+    "firms",
+    "fastapi",
+    "react",
+    "typescript",
+    "leaflet",
+    "isolation-forest",
+    "sih"
+  ],
+  "author": "FieryVision Team",
+  "license": "MIT"
+}

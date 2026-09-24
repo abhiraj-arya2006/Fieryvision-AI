@@ -1,0 +1,241 @@
+{
+  "summary": {
+    "files_inspected": 3,
+    "file_names": [
+      "fire_archive_J1V-C2_806242.csv",
+      "fire_nrt_J1V-C2_806242.csv",
+      "fire_nrt_J2V-C2_806243.csv"
+    ],
+    "total_raw_rows": 18547,
+    "overall_date_range": [
+      "2024-09-16",
+      "2026-09-13"
+    ],
+    "overall_coordinate_bounds": {
+      "lat_min": 30.42001,
+      "lat_max": 31.31989,
+      "lon_min": 75.37,
+      "lon_max": 76.41989
+    }
+  },
+  "files": {
+    "fire_archive_J1V-C2_806242.csv": {
+      "rows": 9134,
+      "columns": [
+        "latitude",
+        "longitude",
+        "brightness",
+        "scan",
+        "track",
+        "acq_date",
+        "acq_time",
+        "satellite",
+        "instrument",
+        "confidence",
+        "version",
+        "bright_t31",
+        "frp",
+        "daynight",
+        "type"
+      ],
+      "dtypes": {
+        "latitude": "float64",
+        "longitude": "float64",
+        "brightness": "float64",
+        "scan": "float64",
+        "track": "float64",
+        "acq_date": "str",
+        "acq_time": "int64",
+        "satellite": "str",
+        "instrument": "str",
+        "confidence": "str",
+        "version": "int64",
+        "bright_t31": "float64",
+        "frp": "float64",
+        "daynight": "str",
+        "type": "int64"
+      },
+      "date_range": [
+        "2024-09-17",
+        "2026-06-29"
+      ],
+      "lat_range": [
+        30.42001,
+        31.31958
+      ],
+      "lon_range": [
+        75.37016,
+        76.41972
+      ],
+      "satellites": [
+        "N20"
+      ],
+      "confidence_values": [
+        "n",
+        "h",
+        "l"
+      ],
+      "missing_values": {
+        "latitude": 0,
+        "longitude": 0,
+        "brightness": 0,
+        "scan": 0,
+        "track": 0,
+        "acq_date": 0,
+        "acq_time": 0,
+        "satellite": 0,
+        "instrument": 0,
+        "confidence": 0,
+        "version": 0,
+        "bright_t31": 0,
+        "frp": 0,
+        "daynight": 0,
+        "type": 0
+      },
+      "duplicate_rows": 0
+    },
+    "fire_nrt_J1V-C2_806242.csv": {
+      "rows": 45,
+      "columns": [
+        "latitude",
+        "longitude",
+        "brightness",
+        "scan",
+        "track",
+        "acq_date",
+        "acq_time",
+        "satellite",
+        "instrument",
+        "confidence",
+        "version",
+        "bright_t31",
+        "frp",
+        "daynight"
+      ],
+      "dtypes": {
+        "latitude": "float64",
+        "longitude": "float64",
+        "brightness": "float64",
+        "scan": "float64",
+        "track": "float64",
+        "acq_date": "str",
+        "acq_time": "int64",
+        "satellite": "str",
+        "instrument": "str",
+        "confidence": "str",
+        "version": "str",
+        "bright_t31": "float64",
+        "frp": "float64",
+        "daynight": "str"
+      },
+      "date_range": [
+        "2026-07-01",
+        "2026-09-13"
+      ],
+      "lat_range": [
+        30.5901,
+        31.26724
+      ],
+      "lon_range": [
+        75.37228,
+        76.31641
+      ],
+      "satellites": [
+        "N20"
+      ],
+      "confidence_values": [
+        "n",
+        "l"
+      ],
+      "missing_values": {
+        "latitude": 0,
+        "longitude": 0,
+        "brightness": 0,
+        "scan": 0,
+        "track": 0,
+        "acq_date": 0,
+        "acq_time": 0,
+        "satellite": 0,
+        "instrument": 0,
+        "confidence": 0,
+        "version": 0,
+        "bright_t31": 0,
+        "frp": 0,
+        "daynight": 0
+      },
+      "duplicate_rows": 0
+    },
+    "fire_nrt_J2V-C2_806243.csv": {
+      "rows": 9368,
+      "columns": [
+        "latitude",
+        "longitude",
+        "brightness",
+        "scan",
+        "track",
+        "acq_date",
+        "acq_time",
+        "satellite",
+        "instrument",
+        "confidence",
+        "version",
+        "bright_t31",
+        "frp",
+        "daynight"
+      ],
+      "dtypes": {
+        "latitude": "float64",
+        "longitude": "float64",
+        "brightness": "float64",
+        "scan": "float64",
+        "track": "float64",
+        "acq_date": "str",
+        "acq_time": "int64",
+        "satellite": "str",
+        "instrument": "str",
+        "confidence": "str",
+        "version": "str",
+        "bright_t31": "float64",
+        "frp": "float64",
+        "daynight": "str"
+      },
+      "date_range": [
+        "2024-09-16",
+        "2026-08-13"
+      ],
+      "lat_range": [
+        30.42004,
+        31.31989
+      ],
+      "lon_range": [
+        75.37,
+        76.41989
+      ],
+      "satellites": [
+        "N21"
+      ],
+      "confidence_values": [
+        "n",
+        "l",
+        "h"
+      ],
+      "missing_values": {
+        "latitude": 0,
+        "longitude": 0,
+        "brightness": 0,
+        "scan": 0,
+        "track": 0,
+        "acq_date": 0,
+        "acq_time": 0,
+        "satellite": 0,
+        "instrument": 0,
+        "confidence": 0,
+        "version": 0,
+        "bright_t31": 0,
+        "frp": 0,
+        "daynight": 0
+      },
+      "duplicate_rows": 0
+    }
+  }
+}
