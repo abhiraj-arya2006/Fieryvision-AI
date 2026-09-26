@@ -11,7 +11,8 @@ import {
   CheckCircle2, 
   Send, 
   Sparkles, 
-  Compass
+  Compass,
+  RotateCcw
 } from 'lucide-react';
 import api from '../services/api';
 import type { LocationAnalysisResponse } from '../types';
@@ -24,6 +25,22 @@ const PRESETS = [
   { name: 'Dhandari Kalan Industrial Hub', lat: 30.881000, lon: 75.905000 },
   { name: 'Giaspura Boiler & Casting Works', lat: 30.872800, lon: 75.895100 },
 ];
+
+const SUGGESTED_QUESTIONS = [
+  "Is this location inside an industrial zone?",
+  "What is the nearest facility & distance?",
+  "Explain the risk score and priority",
+  "What evidence was recorded?",
+  "What action should be taken?"
+];
+
+interface ChatMessage {
+  id: string;
+  sender: 'user' | 'assistant';
+  text: string;
+  timestamp: string;
+  isLlm?: boolean;
+}
 
 export const AssistantPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -39,7 +56,7 @@ export const AssistantPage: React.FC = () => {
   // Chat state
   const [chatQuery, setChatQuery] = useState<string>('');
   const [isChatLoading, setIsChatLoading] = useState<boolean>(false);
-  const [chatResponse, setChatResponse] = useState<string>('');
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatError, setChatError] = useState<string | null>(null);
 
   // Auto-run if coordinates were provided in URL query
@@ -77,7 +94,7 @@ export const AssistantPage: React.FC = () => {
     setIsAnalysing(true);
     setAnalysisError(null);
     setAnalysisData(null);
-    setChatResponse('');
+    setChatMessages([]);
     setChatError(null);
 
     try {
@@ -106,13 +123,24 @@ export const AssistantPage: React.FC = () => {
     triggerAnalysis(lat, lon);
   };
 
-  const handleChat = async () => {
-    const question = chatQuery.trim();
+  const handleChat = async (overrideQuery?: string) => {
+    const question = (overrideQuery || chatQuery).trim();
     if (!question) return;
 
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userMsg: ChatMessage = {
+      id: Date.now().toString(),
+      sender: 'user',
+      text: question,
+      timestamp: timeStr,
+    };
+
+    setChatMessages((prev) => [...prev, userMsg]);
     setIsChatLoading(true);
-    setChatResponse('');
     setChatError(null);
+    if (!overrideQuery) {
+      setChatQuery('');
+    }
 
     const context = analysisData
       ? {
@@ -136,12 +164,25 @@ export const AssistantPage: React.FC = () => {
 
     try {
       const res = await api.chat(question, context);
-      setChatResponse(res.response || '- No response returned.');
+      const aiMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: 'assistant',
+        text: res.response || '- No response returned.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isLlm: res.llm_available,
+      };
+      setChatMessages((prev) => [...prev, aiMsg]);
     } catch (err: any) {
-      setChatError(err?.message || '- AI explanation unavailable — backend unreachable.');
+      const errorMsg: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: 'assistant',
+        text: '- Note: ' + (err?.message || 'Unable to connect to AI explanation service.'),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isLlm: false,
+      };
+      setChatMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsChatLoading(false);
-      setChatQuery('');
     }
   };
 
@@ -149,7 +190,7 @@ export const AssistantPage: React.FC = () => {
   const temporal = analysisData?.temporal_summary || {};
 
   return (
-    <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
+    <div className="flex-1 p-3 sm:p-5 lg:p-6 w-full space-y-6">
       
       {/* Header */}
       <div>
@@ -510,31 +551,88 @@ export const AssistantPage: React.FC = () => {
 
             {/* Ask FieryVision Chat Console */}
             <div className="glass-panel p-5 rounded-xl border border-slate-800 flex flex-col justify-between space-y-4">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider border-b border-slate-800 pb-2 mb-3">
-                  <Bot className="h-4 w-4 text-cyan-400" />
-                  <span>Ask FieryVision (Grounded LLM)</span>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
+                    <Bot className="h-4 w-4 text-cyan-400" />
+                    <span>Ask FieryVision (Grounded AI)</span>
+                  </div>
+                  {chatMessages.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setChatMessages([])}
+                      className="text-[11px] text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      <span>Clear</span>
+                    </button>
+                  )}
                 </div>
                 
-                <p className="text-xs text-slate-400 mb-3">
-                  Ask questions about this specific coordinate investigation. Grounded strictly in the local spatial data.
+                <p className="text-xs text-slate-400">
+                  Ask questions about this specific coordinate investigation. Grounded strictly in verified spatial data.
                 </p>
 
-                {/* Chat response */}
-                {chatResponse && (
-                  <div className="p-3.5 rounded-xl bg-slate-900/90 border border-cyan-500/30 text-xs text-slate-200 whitespace-pre-line leading-relaxed mb-3 font-mono">
-                    {chatResponse}
-                  </div>
-                )}
+                {/* Suggested Question Chips */}
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {SUGGESTED_QUESTIONS.map((q, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      disabled={isChatLoading}
+                      onClick={() => handleChat(q)}
+                      className="text-[11px] px-2.5 py-1 rounded-md bg-slate-800/80 hover:bg-cyan-950/70 border border-slate-700 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 transition-all text-left cursor-pointer"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Chat Message History */}
+                <div className="max-h-72 overflow-y-auto space-y-2.5 pr-1 pt-2">
+                  {chatMessages.length === 0 ? (
+                    <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 text-xs text-slate-400 font-mono">
+                      No questions yet. Click a suggestion chip above or type any question below.
+                    </div>
+                  ) : (
+                    chatMessages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`p-3 rounded-xl text-xs leading-relaxed ${
+                          msg.sender === 'user'
+                            ? 'bg-cyan-950/40 border border-cyan-500/40 text-cyan-100 ml-6'
+                            : 'bg-slate-900/90 border border-slate-800 text-slate-200 mr-2 font-mono whitespace-pre-line'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1 font-sans">
+                          <span className="font-semibold text-slate-300">
+                            {msg.sender === 'user'
+                              ? 'You'
+                              : (msg.isLlm ? 'FieryVision AI (Local Qwen LLM)' : 'FieryVision AI (Grounded Intelligence)')}
+                          </span>
+                          <span>{msg.timestamp}</span>
+                        </div>
+                        <div>{msg.text}</div>
+                      </div>
+                    ))
+                  )}
+
+                  {isChatLoading && (
+                    <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-cyan-400 flex items-center gap-2 font-mono">
+                      <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+                      <span>Synthesizing grounded spatial answer...</span>
+                    </div>
+                  )}
+                </div>
 
                 {chatError && (
-                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-300 mb-3">
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-300">
                     {chatError}
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-800/60">
                 <input
                   type="text"
                   placeholder="e.g. Is this location inside an industrial zone?"
@@ -548,9 +646,9 @@ export const AssistantPage: React.FC = () => {
                 />
                 <button
                   type="button"
-                  onClick={handleChat}
+                  onClick={() => handleChat()}
                   disabled={isChatLoading || !chatQuery.trim()}
-                  className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   {isChatLoading ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />

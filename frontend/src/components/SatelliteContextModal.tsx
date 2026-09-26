@@ -49,7 +49,7 @@ export const SatelliteContextModal: React.FC<SatelliteContextModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div 
         className="glass-panel w-full max-w-lg rounded-2xl overflow-hidden shadow-2xl border border-cyan-500/30 text-slate-200"
         onClick={(e) => e.stopPropagation()}

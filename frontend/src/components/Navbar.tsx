@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   Flame, 
   Map as MapIcon, 
+  Globe,
   Bot, 
   Factory, 
   BarChart3
@@ -13,8 +14,8 @@ export const Navbar: React.FC = () => {
   const { data: health, online, loading } = useHealth(20000);
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-[#82b4ff]/20 bg-[#050914]/85 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-[1000] w-full border-b border-[#82b4ff]/20 bg-[#050914]/85 backdrop-blur-md">
+      <div className="w-full flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
         
         {/* Brand / Logo */}
         <div className="flex items-center gap-3">
@@ -32,17 +33,9 @@ export const Navbar: React.FC = () => {
               <Flame className="absolute h-5 w-5 text-cyan-400 hidden" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-bold tracking-tight text-white group-hover:text-cyan-300 transition-colors">
-                  FieryVision <span className="text-cyan-400">AI</span>
-                </span>
-                <span className="hidden sm:inline-block rounded border border-cyan-500/30 bg-cyan-950/50 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-300 tracking-wider">
-                  INDUSTRIAL INTEL
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 hidden sm:block">
-                Giaspura, Ludhiana · Satellite Thermal Intelligence
-              </p>
+              <span className="text-xl font-bold tracking-tight text-white group-hover:text-cyan-300 transition-colors">
+                FieryVision <span className="text-cyan-400">AI</span>
+              </span>
             </div>
           </NavLink>
         </div>
@@ -50,18 +43,31 @@ export const Navbar: React.FC = () => {
         {/* Navigation Tabs */}
         <nav className="flex items-center gap-1 sm:gap-2">
           <NavLink
-            to="/"
-            end
+            to="/hotspots"
             className={({ isActive }) =>
               `flex items-center gap-2 rounded-lg px-3 py-2 text-xs sm:text-sm font-medium transition-all ${
                 isActive
-                  ? 'bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 shadow-sm shadow-cyan-500/10'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/10 font-bold'
                   : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
               }`
             }
           >
-            <MapIcon className="h-4 w-4" />
-            <span>Map Command</span>
+            <Globe className="h-4 w-4 text-cyan-400" />
+            <span>Global Hotspots</span>
+          </NavLink>
+
+          <NavLink
+            to="/giaspura"
+            className={({ isActive }) =>
+              `flex items-center gap-2 rounded-lg px-3 py-2 text-xs sm:text-sm font-medium transition-all ${
+                isActive
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/10 font-bold'
+                  : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+              }`
+            }
+          >
+            <MapIcon className="h-4 w-4 text-cyan-400" />
+            <span>Giaspura Console</span>
           </NavLink>
 
           <NavLink

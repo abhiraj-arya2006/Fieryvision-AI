@@ -40,7 +40,7 @@ export const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
 
   return (
     <aside 
-      className="fixed inset-y-0 right-0 z-50 w-full sm:w-[460px] glass-panel border-l border-cyan-500/30 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 bg-[#080f1c]/95"
+      className="fixed inset-y-0 right-0 z-[9999] w-full sm:w-[480px] glass-panel border-l border-cyan-500/30 shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 bg-[#080f1c]/95"
     >
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-slate-700/60 bg-slate-900/60">

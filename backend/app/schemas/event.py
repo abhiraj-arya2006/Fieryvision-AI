@@ -94,10 +94,15 @@ class FacilitySchema(BaseModel):
     longitude: float
     address: Optional[str] = None
     operating_status: str = "active"
+    country: Optional[str] = "India"
+    continent: Optional[str] = "Asia"
+    classification: Optional[str] = None
+    risk_tier: Optional[str] = None
+    hotspot_id: Optional[str] = None
 
 class FacilitiesResponse(BaseModel):
     total: int
-    study_area: str = "Giaspura, Ludhiana, Punjab"
+    study_area: str = "Global Monitored Facilities & Hotspots Directory"
     facilities: List[FacilitySchema]
 
 class StatisticsResponse(BaseModel):

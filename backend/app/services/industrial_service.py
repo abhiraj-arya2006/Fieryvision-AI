@@ -60,9 +60,70 @@ GIASPURA_FACILITIES: List[Dict[str, Any]] = [
     }
 ]
 
-def get_all_facilities() -> List[Dict[str, Any]]:
-    """Return cached industrial facilities in the Giaspura study area."""
-    return GIASPURA_FACILITIES
+def get_all_facilities(db: Optional[Any] = None) -> List[Dict[str, Any]]:
+    """Return all industrial facilities and active global hotspots across the world."""
+    facilities: List[Dict[str, Any]] = []
+
+    # 1. Base Giaspura industrial facilities
+    for fac in GIASPURA_FACILITIES:
+        facilities.append({
+            "id": fac["id"],
+            "name": fac["name"],
+            "site_type": fac["site_type"],
+            "latitude": fac["latitude"],
+            "longitude": fac["longitude"],
+            "address": fac.get("address", "Giaspura, Ludhiana, Punjab"),
+            "operating_status": fac.get("operating_status", "active"),
+            "country": "India",
+            "continent": "Asia",
+            "classification": "industrial_facility",
+            "risk_tier": "low",
+            "hotspot_id": None
+        })
+
+    # 2. Add all active hotspots across the globe using Hotspot Intelligence Engine
+    try:
+        from app.services.hotspot_service import hotspot_engine
+        resp = hotspot_engine.list_hotspots(page_size=100)
+        for hs in resp.items:
+            facilities.append({
+                "id": hs.id,
+                "name": hs.name,
+                "site_type": hs.classification.replace("_", " ").title(),
+                "latitude": hs.centroid_lat,
+                "longitude": hs.centroid_lon,
+                "address": f"{hs.region}, {hs.country}",
+                "operating_status": hs.status,
+                "country": hs.country,
+                "continent": hs.continent,
+                "classification": hs.classification,
+                "risk_tier": hs.risk_tier,
+                "hotspot_id": hs.id
+            })
+    except Exception as e:
+        logger.warning(f"Could not load hotspot_engine for facilities: {e}")
+        try:
+            from app.services.hotspot_service import GLOBAL_HOTSPOT_SEEDS
+            for seed in GLOBAL_HOTSPOT_SEEDS:
+                if seed.get("status") == "active":
+                    facilities.append({
+                        "id": seed["id"],
+                        "name": seed["name"],
+                        "site_type": seed.get("classification", "Active Hotspot").replace("_", " ").title(),
+                        "latitude": seed["centroid_lat"],
+                        "longitude": seed["centroid_lon"],
+                        "address": f"{seed.get('region', '')}, {seed.get('country', '')}",
+                        "operating_status": seed.get("status", "active"),
+                        "country": seed.get("country", "Global"),
+                        "continent": seed.get("continent", "Global"),
+                        "classification": seed.get("classification", "active_hotspot"),
+                        "risk_tier": seed.get("risk_tier", "moderate"),
+                        "hotspot_id": seed["id"]
+                    })
+        except Exception:
+            pass
+
+    return facilities
 
 def find_nearest_facility(lat: float, lon: float) -> Tuple[Optional[Dict[str, Any]], float]:
     """

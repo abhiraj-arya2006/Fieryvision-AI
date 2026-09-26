@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Navbar } from './components/Navbar';
+import { GlobalHotspotsPage } from './pages/GlobalHotspotsPage';
 import { MapDashboardPage } from './pages/MapDashboardPage';
 import { AssistantPage } from './pages/AssistantPage';
 import { FacilitiesPage } from './pages/FacilitiesPage';
@@ -16,8 +17,10 @@ export const App: React.FC = () => {
         {/* Main Content Area */}
         <main className="flex-1 flex flex-col">
           <Routes>
-            <Route path="/" element={<MapDashboardPage />} />
+            <Route path="/" element={<GlobalHotspotsPage />} />
+            <Route path="/hotspots" element={<GlobalHotspotsPage />} />
             <Route path="/map" element={<MapDashboardPage />} />
+            <Route path="/giaspura" element={<MapDashboardPage />} />
             <Route path="/assistant" element={<AssistantPage />} />
             <Route path="/analysis" element={<AssistantPage />} />
             <Route path="/facilities" element={<FacilitiesPage />} />
@@ -27,8 +30,8 @@ export const App: React.FC = () => {
         </main>
 
         {/* Modern Command-Center Footer */}
-        <footer className="border-t border-[#82b4ff]/15 bg-[#050914]/90 py-4 px-6 text-xs text-slate-500">
-          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+        <footer className="border-t border-[#82b4ff]/15 bg-[#050914]/90 py-4 px-4 sm:px-6 lg:px-8 text-xs text-slate-500">
+          <div className="w-full flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-slate-400">FieryVision AI</span>
               <span>·</span>

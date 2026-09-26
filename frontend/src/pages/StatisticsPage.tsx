@@ -63,7 +63,7 @@ export const StatisticsPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-6">
+    <div className="flex-1 p-3 sm:p-5 lg:p-6 w-full space-y-6">
       
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">

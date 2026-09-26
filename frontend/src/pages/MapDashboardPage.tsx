@@ -130,7 +130,7 @@ export const MapDashboardPage: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 flex flex-col p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full space-y-4">
+    <div className="flex-1 flex flex-col p-3 sm:p-5 lg:p-6 w-full space-y-4">
       
       {/* Top Header / Status bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">

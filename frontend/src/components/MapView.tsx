@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   MapContainer, 
   TileLayer, 
@@ -14,14 +14,34 @@ import {
   Crosshair, 
   Compass, 
   Factory, 
-  Flame 
+  Flame,
+  Globe
 } from 'lucide-react';
 import type { CanonicalEvent, Facility } from '../types';
 import { getClassificationColor, getPriorityColor } from '../utils/formatters';
 
-// Giaspura, Ludhiana Center Coordinates
+// Geographic Coordinates
+export const INDIA_CENTER: [number, number] = [22.5937, 78.9629];
+export const INDIA_ZOOM = 5;
+
 export const GIASPURA_CENTER: [number, number] = [30.875625, 75.898481];
+export const GIASPURA_ZOOM = 13.5;
 export const GIASPURA_RADIUS_METERS = 15000; // 15 km buffer
+
+// Haversine distance helper (meters)
+function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 interface MapViewProps {
   events: CanonicalEvent[];
@@ -31,12 +51,42 @@ interface MapViewProps {
   investigationCoord?: [number, number] | null;
 }
 
-// Controller component to smoothly fly/reset map view
-function MapController({ center, zoom }: { center: [number, number]; zoom: number }) {
+// Controller component: Starts centered on India and smoothly flies to Giaspura
+function MapController({ 
+  targetCenter, 
+  targetZoom,
+  initialAnimate = true
+}: { 
+  targetCenter: [number, number]; 
+  targetZoom: number;
+  initialAnimate?: boolean;
+}) {
   const map = useMap();
+  const animatedRef = React.useRef(false);
+
   React.useEffect(() => {
-    map.setView(center, zoom);
-  }, [center, zoom, map]);
+    if (initialAnimate && !animatedRef.current) {
+      animatedRef.current = true;
+      // Start centered on national India overview
+      map.setView(INDIA_CENTER, INDIA_ZOOM, { animate: false });
+      
+      // Smoothly fly in to the Giaspura monitoring zone
+      const timer = setTimeout(() => {
+        map.flyTo(targetCenter, targetZoom, {
+          duration: 2.0,
+          easeLinearity: 0.25,
+        });
+      }, 350);
+
+      return () => clearTimeout(timer);
+    } else {
+      map.flyTo(targetCenter, targetZoom, {
+        duration: 1.2,
+        easeLinearity: 0.25,
+      });
+    }
+  }, [targetCenter, targetZoom, map, initialAnimate]);
+
   return null;
 }
 
@@ -61,13 +111,13 @@ function createEventIcon(classification: string, isAnomaly: boolean, isSelected:
 const centerIcon = L.divIcon({
   className: 'fv-center-icon',
   html: `
-    <div style="position:relative; width:18px; height:18px; display:flex; align-items:center; justify-content:center;">
-      <div style="position:absolute; width:18px; height:18px; border-radius:50%; background:rgba(56,189,248,0.3); animation:markerPing 2s infinite;"></div>
-      <div style="width:10px; height:10px; border-radius:50%; background:#38bdf8; border:2px solid #ffffff; box-shadow:0 0 10px #38bdf8;"></div>
+    <div style="position:relative; width:22px; height:22px; display:flex; align-items:center; justify-content:center;">
+      <div style="position:absolute; width:22px; height:22px; border-radius:50%; background:rgba(56,189,248,0.4); animation:markerPing 2s infinite;"></div>
+      <div style="width:12px; height:12px; border-radius:50%; background:#38bdf8; border:2px solid #ffffff; box-shadow:0 0 12px #38bdf8;"></div>
     </div>
   `,
-  iconSize: [18, 18],
-  iconAnchor: [9, 9],
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
 });
 
 export const MapView: React.FC<MapViewProps> = ({
@@ -83,7 +133,7 @@ export const MapView: React.FC<MapViewProps> = ({
   const [tileMode, setTileMode] = useState<'dark' | 'satellite' | 'street'>('dark');
   const [mapTarget, setMapTarget] = useState<{ center: [number, number]; zoom: number }>({
     center: GIASPURA_CENTER,
-    zoom: 13,
+    zoom: GIASPURA_ZOOM,
   });
 
   const tileUrls = {
@@ -92,8 +142,34 @@ export const MapView: React.FC<MapViewProps> = ({
     street: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   };
 
-  const handleResetView = () => {
-    setMapTarget({ center: GIASPURA_CENTER, zoom: 13 });
+  // Filter facilities strictly to Giaspura / Punjab region (within 35 km)
+  const giaspuraFacilities = useMemo(() => {
+    return facilities.filter((f) => {
+      if (f.id.startsWith('IND-GIAS') || f.id === 'HS-IND-001' || f.id.startsWith('HS-IND')) {
+        return true;
+      }
+      const dist = calculateDistanceMeters(GIASPURA_CENTER[0], GIASPURA_CENTER[1], f.latitude, f.longitude);
+      return dist <= 35000;
+    });
+  }, [facilities]);
+
+  // Filter events strictly to Giaspura study region
+  const giaspuraEvents = useMemo(() => {
+    return events.filter((ev) => {
+      const lat = Number(ev.latitude);
+      const lon = Number(ev.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+      const dist = calculateDistanceMeters(GIASPURA_CENTER[0], GIASPURA_CENTER[1], lat, lon);
+      return dist <= 35000;
+    });
+  }, [events]);
+
+  const handleFlyToGiaspura = () => {
+    setMapTarget({ center: GIASPURA_CENTER, zoom: GIASPURA_ZOOM });
+  };
+
+  const handleFlyToIndia = () => {
+    setMapTarget({ center: INDIA_CENTER, zoom: INDIA_ZOOM });
   };
 
   return (
@@ -101,6 +177,7 @@ export const MapView: React.FC<MapViewProps> = ({
       
       {/* Map Layers & Quick Action Controls Overlay */}
       <div className="absolute top-4 left-4 z-[400] flex flex-wrap gap-2 pointer-events-auto">
+        {/* Layer Toggles */}
         <div className="glass-panel p-1.5 rounded-xl flex items-center gap-1 text-xs text-slate-300">
           <button
             onClick={() => setShowEvents(!showEvents)}
@@ -110,7 +187,7 @@ export const MapView: React.FC<MapViewProps> = ({
             title="Toggle Fire Events"
           >
             <Flame className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Events ({events.length})</span>
+            <span className="hidden sm:inline">Events ({giaspuraEvents.length})</span>
           </button>
 
           <button
@@ -121,7 +198,7 @@ export const MapView: React.FC<MapViewProps> = ({
             title="Toggle Industrial Facilities"
           >
             <Factory className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Facilities ({facilities.length})</span>
+            <span className="hidden sm:inline">Facilities ({giaspuraFacilities.length})</span>
           </button>
 
           <button
@@ -133,6 +210,27 @@ export const MapView: React.FC<MapViewProps> = ({
           >
             <Crosshair className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">15km Zone</span>
+          </button>
+        </div>
+
+        {/* View Zoom Presets */}
+        <div className="glass-panel p-1.5 rounded-xl flex items-center gap-1 text-xs text-slate-300">
+          <button
+            onClick={handleFlyToIndia}
+            className="px-2.5 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-1 transition-colors"
+            title="Zoom out to India National View"
+          >
+            <Globe className="h-3.5 w-3.5 text-amber-400" />
+            <span className="hidden sm:inline">India View</span>
+          </button>
+
+          <button
+            onClick={handleFlyToGiaspura}
+            className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 font-semibold flex items-center gap-1 border border-cyan-500/30 transition-colors shadow-sm shadow-cyan-500/10"
+            title="Focus on Giaspura, Ludhiana Monitoring Zone"
+          >
+            <Compass className="h-3.5 w-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Focus Giaspura</span>
           </button>
         </div>
 
@@ -163,22 +261,15 @@ export const MapView: React.FC<MapViewProps> = ({
             Street
           </button>
         </div>
-
-        {/* Center Target Action */}
-        <button
-          onClick={handleResetView}
-          className="glass-panel px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-xs text-slate-300 hover:text-white hover:border-cyan-500/40 transition-all"
-          title="Recenter Map on Giaspura Monitoring Center"
-        >
-          <Compass className="h-3.5 w-3.5 text-cyan-400" />
-          <span className="hidden sm:inline">Center Giaspura</span>
-        </button>
       </div>
 
       {/* Map Legend Overlay */}
-      <div className="absolute bottom-4 left-4 z-[400] glass-panel p-3 rounded-xl text-xs space-y-1.5 hidden md:block max-w-[220px]">
-        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-          Map Legend
+      <div className="absolute bottom-4 left-4 z-[400] glass-panel p-3 rounded-xl text-xs space-y-1.5 hidden md:block max-w-[240px]">
+        <div className="flex items-center justify-between pb-1 mb-1 border-b border-slate-700/60">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+            Giaspura Legend
+          </span>
+          <span className="text-[10px] text-cyan-400 font-mono">15km Radius</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm shadow-red-500"></span>
@@ -198,7 +289,7 @@ export const MapView: React.FC<MapViewProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-slate-400 border border-slate-300"></span>
-          <span className="text-slate-300">Industrial Facility</span>
+          <span className="text-slate-300">Monitored Industrial Site</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400"></span>
@@ -208,14 +299,14 @@ export const MapView: React.FC<MapViewProps> = ({
 
       {/* Leaflet Map Container */}
       <MapContainer
-        center={GIASPURA_CENTER}
-        zoom={13}
+        center={INDIA_CENTER}
+        zoom={INDIA_ZOOM}
         scrollWheelZoom={true}
         className="w-full h-full"
       >
-        <MapController center={mapTarget.center} zoom={mapTarget.zoom} />
+        <MapController targetCenter={mapTarget.center} targetZoom={mapTarget.zoom} />
 
-        {/* Base Tile Layer - 100% Free & Open (No API key required) */}
+        {/* Base Tile Layer */}
         <TileLayer
           key={tileMode}
           attribution={
@@ -235,10 +326,10 @@ export const MapView: React.FC<MapViewProps> = ({
             radius={GIASPURA_RADIUS_METERS}
             pathOptions={{
               color: '#38bdf8',
-              weight: 1.5,
+              weight: 2,
               dashArray: '6, 6',
               fillColor: '#0284c7',
-              fillOpacity: 0.05,
+              fillOpacity: 0.08,
             }}
           >
             <Tooltip direction="top" opacity={0.9}>
@@ -254,36 +345,37 @@ export const MapView: React.FC<MapViewProps> = ({
           </Tooltip>
         </Marker>
 
-        {/* Facility Markers */}
+        {/* Giaspura Facility Markers */}
         {showFacilities &&
-          facilities.map((facility) => {
+          giaspuraFacilities.map((facility) => {
             if (!Number.isFinite(facility.latitude) || !Number.isFinite(facility.longitude)) return null;
 
             return (
               <CircleMarker
                 key={facility.id}
                 center={[facility.latitude, facility.longitude]}
-                radius={5}
+                radius={6}
                 pathOptions={{
-                  color: '#aebdca',
-                  weight: 1,
-                  fillColor: '#53697c',
-                  fillOpacity: 0.85,
+                  color: '#38bdf8',
+                  weight: 1.5,
+                  fillColor: '#0f766e',
+                  fillOpacity: 0.9,
                 }}
               >
-                <Tooltip direction="top" opacity={0.9}>
-                  <div>
-                    <div className="font-semibold text-white">{facility.name}</div>
-                    <div className="text-[10px] text-cyan-300">{facility.site_type}</div>
+                <Tooltip direction="top" opacity={0.95}>
+                  <div className="p-1">
+                    <div className="font-bold text-white text-xs">{facility.name}</div>
+                    <div className="text-[10px] text-cyan-300 font-medium">{facility.site_type}</div>
+                    <div className="text-[10px] text-slate-300 mt-0.5">{facility.address}</div>
                   </div>
                 </Tooltip>
               </CircleMarker>
             );
           })}
 
-        {/* Active Fire Event Markers */}
+        {/* Giaspura Active Fire Event Markers */}
         {showEvents &&
-          events.map((event) => {
+          giaspuraEvents.map((event) => {
             const lat = Number(event.latitude);
             const lon = Number(event.longitude);
             if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
@@ -346,20 +438,20 @@ export const MapView: React.FC<MapViewProps> = ({
             );
           })}
 
-        {/* Temporary Investigation Point (if investigating coordinates) */}
+        {/* Temporary Investigation Point */}
         {investigationCoord && (
           <Marker
             position={investigationCoord}
             icon={L.divIcon({
               className: 'fv-investigate-icon',
               html: `
-                <div style="position:relative; width:22px; height:22px; display:flex; align-items:center; justify-content:center;">
-                  <div style="position:absolute; width:22px; height:22px; border-radius:50%; background:rgba(234,179,8,0.4); animation:markerPing 1.5s infinite;"></div>
-                  <div style="width:12px; height:12px; border-radius:50%; background:#eab308; border:2px solid #ffffff; box-shadow:0 0 10px #eab308;"></div>
+                <div style="position:relative; width:24px; height:24px; display:flex; align-items:center; justify-content:center;">
+                  <div style="position:absolute; width:24px; height:24px; border-radius:50%; background:rgba(234,179,8,0.4); animation:markerPing 1.5s infinite;"></div>
+                  <div style="width:14px; height:14px; border-radius:50%; background:#eab308; border:2px solid #ffffff; box-shadow:0 0 12px #eab308;"></div>
                 </div>
               `,
-              iconSize: [22, 22],
-              iconAnchor: [11, 11],
+              iconSize: [24, 24],
+              iconAnchor: [12, 12],
             })}
           >
             <Tooltip direction="top" permanent>

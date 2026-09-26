@@ -450,3 +450,309 @@ async def chat(payload: ChatRequest):
         response=response_text or "- AI explanation unavailable — Ollama/Qwen service is offline.",
         llm_available=llm_ok
     )
+
+
+# =====================================================================
+# PHASE 10.5: GLOBAL HOTSPOT INTELLIGENCE SYSTEM ENDPOINTS
+# =====================================================================
+
+from app.schemas.hotspot import (
+    HotspotsListResponse,
+    HotspotSummarySchema,
+    HotspotDetailSchema,
+    HotspotSnapshotSchema,
+    HotspotAnalyticsResponse,
+    HotspotAlertSchema
+)
+from app.services.hotspot_service import hotspot_engine
+
+
+@router.get("/hotspots", response_model=HotspotsListResponse, tags=["Hotspots"])
+async def get_hotspots(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None),
+    classification: Optional[str] = Query(None),
+    continent: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    risk_tier: Optional[str] = Query(None),
+    min_risk: Optional[float] = Query(None),
+    min_frp: Optional[float] = Query(None),
+    min_persistence: Optional[float] = Query(None),
+    sort_by: str = Query("risk_score"),
+    order: str = Query("desc")
+):
+    """
+    Retrieve paginated global hotspots with comprehensive filtering, spatial bounds, and sorting.
+    """
+    return hotspot_engine.list_hotspots(
+        page=page,
+        page_size=page_size,
+        status=status,
+        classification=classification,
+        continent=continent,
+        country=country,
+        risk_tier=risk_tier,
+        min_risk=min_risk,
+        min_frp=min_frp,
+        min_persistence=min_persistence,
+        sort_by=sort_by,
+        order=order
+    )
+
+
+@router.get("/hotspots/analytics", response_model=HotspotAnalyticsResponse, tags=["Hotspots"])
+async def get_hotspot_analytics():
+    """
+    Retrieve global hotspot dashboard analytics, classification counts, and regional breakdown.
+    """
+    return hotspot_engine.get_global_analytics()
+
+
+@router.get("/hotspots/alerts", response_model=List[HotspotAlertSchema], tags=["Hotspots"])
+async def get_hotspot_alerts():
+    """
+    Retrieve active objective alert-ready hotspot events (extreme FRP, rapid expansion, critical risk).
+    """
+    return hotspot_engine.get_hotspot_alerts()
+
+
+@router.get("/hotspots/active", response_model=List[HotspotSummarySchema], tags=["Hotspots"])
+async def get_active_hotspots():
+    """
+    Shortcut endpoint to retrieve all currently active global hotspots.
+    """
+    res = hotspot_engine.list_hotspots(status="ACTIVE", page_size=100)
+    return res.items
+
+
+@router.get("/hotspots/emerging", response_model=List[HotspotSummarySchema], tags=["Hotspots"])
+async def get_emerging_hotspots():
+    """
+    Shortcut endpoint to retrieve early-warning emerging hotspots with rapid growth.
+    """
+    res = hotspot_engine.list_hotspots(classification="EMERGING", page_size=50)
+    return res.items
+
+
+@router.get("/hotspots/persistent", response_model=List[HotspotSummarySchema], tags=["Hotspots"])
+async def get_persistent_hotspots():
+    """
+    Shortcut endpoint to retrieve persistent multi-pass hotspots.
+    """
+    res = hotspot_engine.list_hotspots(classification="PERSISTENT", page_size=50)
+    return res.items
+
+
+@router.get("/hotspots/high-risk", response_model=List[HotspotSummarySchema], tags=["Hotspots"])
+async def get_high_risk_hotspots():
+    """
+    Shortcut endpoint to retrieve critical and high risk tier hotspots.
+    """
+    res = hotspot_engine.list_hotspots(min_risk=70.0, page_size=50)
+    return res.items
+
+
+@router.get("/hotspots/bbox", response_model=List[HotspotSummarySchema], tags=["Hotspots"])
+async def get_hotspots_bbox(
+    min_lat: float = Query(..., description="Minimum latitude"),
+    min_lon: float = Query(..., description="Minimum longitude"),
+    max_lat: float = Query(..., description="Maximum latitude"),
+    max_lon: float = Query(..., description="Maximum longitude")
+):
+    """
+    Retrieve hotspots contained within or intersecting a bounding box.
+    """
+    return hotspot_engine.get_hotspots_in_bbox(min_lat, min_lon, max_lat, max_lon)
+
+
+@router.get("/hotspots/nearby", response_model=List[HotspotSummarySchema], tags=["Hotspots"])
+async def get_hotspots_nearby(
+    latitude: float = Query(..., description="Target center latitude"),
+    longitude: float = Query(..., description="Target center longitude"),
+    radius_km: float = Query(500.0, ge=1.0, le=10000.0, description="Search radius in kilometers")
+):
+    """
+    Retrieve hotspots within a geographic radius (km) of specified coordinate.
+    """
+    return hotspot_engine.get_nearby_hotspots(latitude, longitude, radius_km)
+
+
+@router.get("/hotspots/{hotspot_id}", response_model=HotspotDetailSchema, tags=["Hotspots"])
+async def get_hotspot_by_id(hotspot_id: str = Path(..., description="Target Hotspot ID")):
+    """
+    Retrieve detailed scientific analysis, landcover context, and timeline for a specific hotspot.
+    """
+    detail = hotspot_engine.get_hotspot_detail(hotspot_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Hotspot '{hotspot_id}' not found.")
+    return detail
+
+
+@router.get("/hotspots/{hotspot_id}/history", response_model=List[HotspotSnapshotSchema], tags=["Hotspots"])
+async def get_hotspot_history(hotspot_id: str = Path(..., description="Target Hotspot ID")):
+    """
+    Retrieve historical timeline snapshots for FRP, event count, area, and risk score evolution.
+    """
+    detail = hotspot_engine.get_hotspot_detail(hotspot_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Hotspot '{hotspot_id}' not found.")
+    return detail.timeline_snapshots
+
+
+@router.get("/hotspots/{hotspot_id}/timeline", response_model=List[HotspotSnapshotSchema], tags=["Hotspots"])
+async def get_hotspot_timeline(hotspot_id: str = Path(..., description="Target Hotspot ID")):
+    """
+    Alias for /hotspots/{id}/history.
+    """
+    return await get_hotspot_history(hotspot_id)
+
+
+# =====================================================================
+# PHASE 11: INCIDENT RESPONSE, WIND, PLUME, EMERGENCY & PDF ENDPOINTS
+# =====================================================================
+
+from datetime import datetime, timezone
+from fastapi.responses import Response
+from app.schemas.hotspot import (
+    WindDataSchema,
+    PlumeConeResponse,
+    EmergencyFacilitySchema,
+    EmergencyContextResponse,
+    IncidentIntelResponse
+)
+from app.services.weather_service import weather_service, plume_engine
+from app.services.emergency_service import emergency_service
+from app.services.pdf_report_service import pdf_report_service
+from app.services.industrial_service import get_all_facilities
+
+
+@router.get("/weather/wind", response_model=WindDataSchema, tags=["Weather"])
+async def get_wind_data(
+    latitude: float = Query(..., ge=-90.0, le=90.0, description="Latitude degree"),
+    longitude: float = Query(..., ge=-180.0, le=180.0, description="Longitude degree")
+):
+    """
+    Retrieve current 10m wind conditions and 12-hour hourly forecasts with spatial grid caching.
+    """
+    return await weather_service.get_wind_data(latitude, longitude)
+
+
+@router.get("/hotspots/{hotspot_id}/wind", response_model=WindDataSchema, tags=["Weather"])
+async def get_hotspot_wind(hotspot_id: str = Path(..., description="Target Hotspot ID")):
+    """
+    Retrieve real-time wind speed, direction, and hourly forecasts for a specific hotspot.
+    """
+    detail = hotspot_engine.get_hotspot_detail(hotspot_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Hotspot '{hotspot_id}' not found.")
+    return await weather_service.get_wind_data(detail.centroid_lat, detail.centroid_lon)
+
+
+@router.get("/hotspots/{hotspot_id}/plume", response_model=PlumeConeResponse, tags=["Weather"])
+async def get_hotspot_plume(hotspot_id: str = Path(..., description="Target Hotspot ID")):
+    """
+    Retrieve time-aware indicative screening-level plume transport polygons (1h, 3h, 6h, 12h horizons).
+    """
+    detail = hotspot_engine.get_hotspot_detail(hotspot_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Hotspot '{hotspot_id}' not found.")
+    wind = await weather_service.get_wind_data(detail.centroid_lat, detail.centroid_lon)
+    return plume_engine.generate_plume_cones(
+        hotspot_id=detail.id,
+        hotspot_name=detail.name,
+        lat=detail.centroid_lat,
+        lon=detail.centroid_lon,
+        wind=wind
+    )
+
+
+@router.get("/emergency/nearby", response_model=List[EmergencyFacilitySchema], tags=["Emergency"])
+async def get_emergency_nearby(
+    latitude: float = Query(..., ge=-90.0, le=90.0, description="Latitude degree"),
+    longitude: float = Query(..., ge=-180.0, le=180.0, description="Longitude degree"),
+    radius_km: float = Query(12.0, ge=1.0, le=50.0, description="Search radius in kilometers")
+):
+    """
+    Retrieve nearby fire stations, hospitals, verified burn/trauma units, and fire hydrants from OpenStreetMap.
+    """
+    return await emergency_service.get_nearby_emergency_infrastructure(latitude, longitude, radius_km)
+
+
+@router.get("/hotspots/{hotspot_id}/emergency-context", response_model=EmergencyContextResponse, tags=["Emergency"])
+async def get_hotspot_emergency_context(hotspot_id: str = Path(..., description="Target Hotspot ID")):
+    """
+    Evaluate nearest emergency resources and calculate 1 km & 3 km evacuation planning buffer intersections.
+    """
+    detail = hotspot_engine.get_hotspot_detail(hotspot_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Hotspot '{hotspot_id}' not found.")
+    
+    industrial_facilities = get_all_facilities()
+    return await emergency_service.get_emergency_context_for_hotspot(
+        hotspot_id=detail.id,
+        hotspot_name=detail.name,
+        lat=detail.centroid_lat,
+        lon=detail.centroid_lon,
+        nearby_industrial_facilities=industrial_facilities
+    )
+
+
+@router.get("/hotspots/{hotspot_id}/incident-intel", response_model=IncidentIntelResponse, tags=["Incident"])
+async def get_hotspot_incident_intelligence(hotspot_id: str = Path(..., description="Target Hotspot ID")):
+    """
+    Retrieve unified incident intelligence payload aggregating thermal telemetry, wind vector,
+    indicative plume cones, emergency infrastructure, planning buffers, and AI summary.
+    """
+    detail = hotspot_engine.get_hotspot_detail(hotspot_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail=f"Hotspot '{hotspot_id}' not found.")
+    
+    wind = await weather_service.get_wind_data(detail.centroid_lat, detail.centroid_lon)
+    plume = plume_engine.generate_plume_cones(detail.id, detail.name, detail.centroid_lat, detail.centroid_lon, wind)
+    
+    industrial_facilities = get_all_facilities()
+    emergency = await emergency_service.get_emergency_context_for_hotspot(
+        hotspot_id=detail.id,
+        hotspot_name=detail.name,
+        lat=detail.centroid_lat,
+        lon=detail.centroid_lon,
+        nearby_industrial_facilities=industrial_facilities
+    )
+
+    ai_summary = (
+        f"• Thermal Profile: Active thermal hotspot '{detail.name}' observed with peak FRP of {detail.max_frp:.1f} MW and {detail.event_count} satellite detections.\n"
+        f"• Atmospheric Vector: 10m wind at {wind.wind_speed_kmh} km/h from {wind.cardinal_direction} ({wind.wind_direction_deg:.0f}°) creates downwind transport bearing of {wind.downwind_bearing_deg:.1f}°.\n"
+        f"• Planning Buffers: 1km planning buffer contains {emergency.buffer_1km.industrial_facilities_count} industrial sites and {emergency.buffer_1km.hydrants_count} hydrants. 3km planning buffer contains {emergency.buffer_3km.fire_stations_count} fire stations and {emergency.buffer_3km.hospitals_count} hospitals.\n"
+        f"• Immediate Response Resource: Nearest fire station is {emergency.nearest_fire_station.name if emergency.nearest_fire_station else 'Local Fire Service'} ({emergency.nearest_fire_station.distance_m/1000.0:.2f} km) and nearest hospital is {emergency.nearest_hospital.name if emergency.nearest_hospital else 'Regional Medical Center'} ({emergency.nearest_hospital.distance_m/1000.0:.2f} km)."
+    )
+
+    return IncidentIntelResponse(
+        hotspot=detail,
+        wind=wind,
+        plume=plume,
+        emergency=emergency,
+        ai_investigation_summary=ai_summary,
+        generated_at=datetime.now(timezone.utc).isoformat()
+    )
+
+
+@router.get("/hotspots/{hotspot_id}/report/pdf", tags=["Incident"])
+async def export_incident_pdf_report(hotspot_id: str = Path(..., description="Target Hotspot ID")):
+    """
+    Generate and download a professional 2-page Executive Incident Disaster Brief in PDF format.
+    """
+    incident_intel = await get_hotspot_incident_intelligence(hotspot_id)
+    pdf_bytes = pdf_report_service.generate_incident_pdf(incident_intel)
+    
+    filename = f"fieryvision_incident_{hotspot_id.lower().replace('-', '_')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Content-Type": "application/pdf"
+        }
+    )
+
+
