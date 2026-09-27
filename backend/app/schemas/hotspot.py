@@ -89,6 +89,8 @@ class HotspotsListResponse(BaseModel):
 
 class HotspotAnalyticsResponse(BaseModel):
     total_active_hotspots: int
+    raw_detections_count: int = 0
+    ai_anomalies_count: int = 0
     emerging_hotspots_count: int
     persistent_hotspots_count: int
     high_intensity_hotspots_count: int
@@ -180,6 +182,7 @@ class EmergencyFacilitySchema(BaseModel):
     longitude: float
     distance_m: float
     bearing_deg: float
+    cardinal_direction: Optional[str] = None
     address: Optional[str] = "Address not listed"
     phone: Optional[str] = "Contact number unavailable"
     operator: Optional[str] = None

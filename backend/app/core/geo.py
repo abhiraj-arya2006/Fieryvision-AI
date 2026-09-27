@@ -48,13 +48,6 @@ def latlon_to_utm43n(lat: float, lon: float) -> Tuple[float, float]:
     northing = k0 * (M + N * math.tan(lat_rad) * (A**2 / 2.0 + (5 - T + 9 * C + 4 * C**2) * A**4 / 24.0 + (61 - 58 * T + T**2 + 600 * C - 330 * e_prime2) * A**6 / 720.0))
     return (round(easting, 2), round(northing, 2))
 
-def is_within_giaspura_area(lat: float, lon: float, max_radius_km: Optional[float] = None) -> bool:
-    """
-    Check if a coordinate falls within the Giaspura monitoring zone.
-    """
-    radius_km = max_radius_km if max_radius_km is not None else settings.GIASPURA_RADIUS_KM
-    dist_m = haversine_distance_m(lat, lon, settings.GIASPURA_LAT, settings.GIASPURA_LON)
-    return dist_m <= (radius_km * 1000.0)
 
 def validate_coordinates(lat: float, lon: float) -> Tuple[bool, str]:
     """

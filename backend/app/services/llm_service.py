@@ -101,6 +101,16 @@ def _generate_grounded_answer(question: str, context: Optional[Dict[str, Any]] =
     dist_m = ctx.get("distance_to_facility_m")
     landcover = ctx.get("landcover") or "Unknown"
     risk_score = ctx.get("risk_score")
+    event_risk_score = ctx.get("event_risk_score")
+    localized_risk_score = ctx.get("localized_risk_score") if ctx.get("localized_risk_score") is not None else risk_score
+    risk_diff = ctx.get("risk_difference")
+    matched_hs_id = ctx.get("matched_hotspot_id")
+    matched_hs_dist = ctx.get("matched_hotspot_distance_km")
+
+    fs = ctx.get("nearest_fire_station")
+    hosp = ctx.get("nearest_hospital")
+    burn = ctx.get("nearest_burn_trauma")
+
     priority = (ctx.get("priority") or "low").upper()
     classification = ctx.get("classification") or "unclassified"
     method = ctx.get("classification_method") or "evidence_based"
@@ -123,8 +133,8 @@ def _generate_grounded_answer(question: str, context: Optional[Dict[str, Any]] =
     # If context is completely empty (no coordinate analyzed yet)
     if lat is None and lon is None and not ctx:
         return (
-            "- FieryVision AI monitors thermal anomalies and industrial fire risk across a 15 km buffer around Giaspura, Ludhiana (30.8756°N, 75.8985°E).\n"
-            "- To analyze a specific coordinate, enter latitude and longitude above (or click a preset) and select 'Analyse Location'.\n"
+            "- FieryVision AI monitors thermal anomalies, active fires, and industrial heat emissions worldwide.\n"
+            "- To analyze a specific coordinate, enter latitude and longitude above (or click an event) and select 'Analyse Location'.\n"
             "- Once loaded, I can answer questions regarding industrial boundary status, nearest facilities, landcover, thermal power (FRP), persistence, and risk scores."
         )
 
@@ -135,24 +145,26 @@ def _generate_grounded_answer(question: str, context: Optional[Dict[str, Any]] =
             lines = [
                 f"- Nearest Facility: {fac_name or 'None identified nearby'} ({fac_type or 'Industrial Unit'}).",
                 f"- Distance: Approximately {dist_str} from {loc_str}.",
-                f"- Industrial Zone Status: {'Inside the designated Giaspura industrial cluster' if inside_zone else 'Outside designated industrial boundaries'}.",
+                f"- Industrial Zone Status: {'Inside mapped industrial perimeter' if inside_zone else 'Outside mapped industrial boundaries'}.",
                 f"- Land Cover: Classified as '{landcover}'."
             ]
             return "\n".join(lines)
         else:
             # Industrial zone status query
-            status_text = "YES: this coordinate is INSIDE the designated industrial cluster boundary." if inside_zone else "NO: this coordinate is OUTSIDE the designated industrial zone."
+            status_text = "YES: this coordinate is INSIDE a mapped industrial facility perimeter." if inside_zone else "NO: this coordinate is OUTSIDE mapped industrial perimeters."
             lines = [
                 f"- Status: {status_text}",
                 f"- Nearest Industrial Site: {fac_name or 'None recorded'} ({fac_type or 'General Industrial'}), located {dist_str} away.",
-                f"- Surface Classification: ESA WorldCover indicates '{landcover}'.",
-                f"- Operational Context: {'Higher likelihood of industrial process heat (furnaces, boilers, metalworks).' if inside_zone else 'Thermal events here typically correlate with biomass, open agricultural burning, or municipal waste.'}"
+                f"- Surface Classification: Landcover indicates '{landcover}'.",
+                f"- Operational Context: {'Higher likelihood of industrial process heat (furnaces, boilers, metalworks).' if inside_zone else 'Thermal events here typically correlate with biomass, open agricultural burning, or wildfire.'}"
             ]
             return "\n".join(lines)
 
     # 2. Risk / Priority / Safety / Danger Query
     if any(k in q for k in ["risk", "priority", "safe", "danger", "dangerous", "threat", "hazard", "score", "level", "critical", "severity"]):
-        score_val = f"{risk_score}/100" if risk_score is not None else "Calculated based on evidence"
+        score_val = f"{localized_risk_score}/100" if localized_risk_score is not None else "Calculated based on evidence"
+        event_str = f"{event_risk_score}/100" if event_risk_score is not None else "None"
+        diff_str = f"{risk_diff:+.1f}" if risk_diff is not None else "0.0"
         guideline = (
             "Immediate alert dispatch & visual verification recommended." if priority == "CRITICAL"
             else "Elevated monitoring priority with cross-sensor validation." if priority == "HIGH"
@@ -160,19 +172,46 @@ def _generate_grounded_answer(question: str, context: Optional[Dict[str, Any]] =
             else "Low operational concern; routine background monitoring."
         )
         lines = [
-            f"- Triage Priority: {priority} (Risk Score: {score_val}).",
-            f"- Evaluation Method: Evaluated via {method}.",
-            f"- Facility Exposure: Located {dist_str} from {fac_name or 'nearest facility'} ({'Inside' if inside_zone else 'Outside'} industrial zone).",
+            f"- Localized Risk Score: {score_val} (Triage Priority: {priority}).",
+            f"- Event Risk Score: {event_str} (Regional cluster: {matched_hs_id or 'None within 25km'}).",
+            f"- Score Reconciliation: Localized adjustment is {diff_str} points (strictly bounded within ±8.0 points of event risk).",
             f"- Operational Guideline: {guideline}"
         ]
         return "\n".join(lines)
 
-    # 3. Facility & Infrastructure Query
+    # 3. Emergency Response Facilities Query (Fire Stations, Hospitals, Burn/Trauma, EMS)
+    if any(k in q for k in ["fire station", "fire department", "hospital", "burn", "trauma", "emergency", "ambulance", "hydrant", "first responder", "medical"]):
+        lines = []
+        if fs:
+            fs_dist_km = round(fs["distance_m"] / 1000.0, 1)
+            fs_bearing = fs.get("bearing_deg", 0.0)
+            fs_cardinal = fs.get("cardinal_direction", "")
+            card_str = f" ({fs_cardinal})" if fs_cardinal else ""
+            fs_zone = "Within 25 km immediate response zone" if fs["distance_m"] <= 25000.0 else f"Outside 25 km response zone ({fs_dist_km} km away)"
+            lines.append(f"- Nearest Fire Station: {fs['name']} ({fs_dist_km} km away, bearing {fs_bearing}°{card_str} — {fs_zone}).")
+        else:
+            lines.append("- Nearest Fire Station: No mapped municipal fire station located within 250 km search perimeter.")
+
+        if hosp:
+            hosp_dist_km = round(hosp["distance_m"] / 1000.0, 1)
+            hosp_bearing = hosp.get("bearing_deg", 0.0)
+            hosp_cardinal = hosp.get("cardinal_direction", "")
+            card_str = f" ({hosp_cardinal})" if hosp_cardinal else ""
+            hosp_spec = "Verified Burn/Trauma emergency unit" if hosp.get("specialty_verified") else "General emergency medical facility"
+            hosp_zone = "Within 25 km transport radius" if hosp["distance_m"] <= 25000.0 else f"Outside 25 km radius ({hosp_dist_km} km away)"
+            lines.append(f"- Nearest Hospital: {hosp['name']} ({hosp_dist_km} km away, bearing {hosp_bearing}°{card_str} — {hosp_spec}; {hosp_zone}).")
+        else:
+            lines.append("- Nearest Hospital: No mapped hospital or medical facility located within 250 km search perimeter.")
+
+        lines.append("- Dispatch Note: In an active incident, contact local emergency services immediately via civil defense emergency frequencies.")
+        return "\n".join(lines)
+
+    # 4. Industrial Facility & Infrastructure Query
     if any(k in q for k in ["facility", "factory", "plant", "mill", "building", "infrastructure", "company"]):
         lines = [
             f"- Nearest Facility: {fac_name or 'None identified within 5 km'} ({fac_type or 'Industrial site'}).",
             f"- Distance: {dist_str} from target coordinates.",
-            f"- Zone Placement: {'Within designated industrial cluster' if inside_zone else 'Outside industrial perimeter'}.",
+            f"- Zone Placement: {'Within mapped industrial perimeter' if inside_zone else 'Outside industrial perimeter'}.",
             f"- Landcover: {landcover}."
         ]
         return "\n".join(lines)
@@ -226,7 +265,7 @@ def _generate_grounded_answer(question: str, context: Optional[Dict[str, Any]] =
         lines = [
             f"- Assessment: Classified as '{classification}' (Priority: {priority}).",
             *evidence_lines,
-            f"- Data Grounding: Grounded in NASA VIIRS thermal passes, ESA WorldCover, and Giaspura industrial GIS."
+            f"- Data Grounding: Grounded in NASA VIIRS thermal passes, ESA WorldCover, and OpenStreetMap industrial GIS."
         ]
         return "\n".join(lines)
 
@@ -350,12 +389,25 @@ async def generate_chat_response(question: str, context: Optional[Dict[str, Any]
         ctx_lines.append(f"Location: ({ctx['latitude']}, {ctx['longitude']})")
     if ctx.get("classification"):
         ctx_lines.append(f"Classification: {ctx['classification']} (method: {ctx.get('classification_method', 'unknown')})")
-    if ctx.get("risk_score") is not None:
-        ctx_lines.append(f"Risk Score: {ctx['risk_score']}/100, Priority: {ctx.get('priority', 'unknown')}")
+    if ctx.get("risk_score") is not None or ctx.get("localized_risk_score") is not None:
+        loc_r = ctx.get("localized_risk_score", ctx.get("risk_score"))
+        ev_r = ctx.get("event_risk_score")
+        ev_str = f" (Event Risk: {ev_r}/100)" if ev_r is not None else ""
+        ctx_lines.append(f"Localized Risk Score: {loc_r}/100{ev_str}, Priority: {ctx.get('priority', 'unknown')}")
+    if ctx.get("nearest_fire_station"):
+        fs = ctx["nearest_fire_station"]
+        fs_km = round(fs.get("distance_m", 0) / 1000.0, 1)
+        fs_zone = "within 25km" if fs.get("distance_m", 0) <= 25000.0 else "outside 25km"
+        ctx_lines.append(f"Nearest Fire Station: {fs.get('name')} ({fs_km} km away, bearing {fs.get('bearing_deg')}°, {fs_zone})")
+    if ctx.get("nearest_hospital"):
+        h = ctx["nearest_hospital"]
+        h_km = round(h.get("distance_m", 0) / 1000.0, 1)
+        h_zone = "within 25km" if h.get("distance_m", 0) <= 25000.0 else "outside 25km"
+        ctx_lines.append(f"Nearest Hospital: {h.get('name')} ({h_km} km away, bearing {h.get('bearing_deg')}°, {h_zone})")
     if ctx.get("nearest_facility_name"):
         dist = ctx.get("distance_to_facility_m")
         dist_str = f"{int(dist)}m" if dist is not None else "unknown distance"
-        ctx_lines.append(f"Nearest Facility: {ctx['nearest_facility_name']} ({dist_str}, type: {ctx.get('nearest_facility_type', 'industrial')})")
+        ctx_lines.append(f"Nearest Industrial Facility: {ctx['nearest_facility_name']} ({dist_str}, type: {ctx.get('nearest_facility_type', 'industrial')})")
     if ctx.get("inside_industrial_zone") is not None:
         ctx_lines.append(f"Inside Industrial Zone: {ctx['inside_industrial_zone']}")
     if ctx.get("landcover"):

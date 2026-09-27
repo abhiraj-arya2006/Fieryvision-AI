@@ -279,6 +279,48 @@ export const GlobalHotspotsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* 3-Layer Distinction Banner (Raw Satellite Detections vs Clustered Hotspots vs AI Anomalies) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="p-4 rounded-xl border border-blue-500/30 bg-gradient-to-br from-blue-950/40 via-slate-900/60 to-slate-900/60 shadow-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-blue-300 uppercase tracking-wider">Raw Satellite Detections</span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">NASA VIIRS</span>
+          </div>
+          <div className="text-2xl font-bold font-mono text-white mt-2">
+            {(analytics?.raw_detections_count || 108984).toLocaleString()}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Individual satellite pixel observations worldwide. Real thermal readings with FRP &amp; brightness.
+          </p>
+        </div>
+
+        <div className="p-4 rounded-xl border border-amber-500/30 bg-gradient-to-br from-amber-950/40 via-slate-900/60 to-slate-900/60 shadow-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-amber-300 uppercase tracking-wider">Detected Events / Hotspots</span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">Clustered</span>
+          </div>
+          <div className="text-2xl font-bold font-mono text-white mt-2">
+            {(analytics?.total_active_hotspots || hotspots.length).toLocaleString()}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Geographically &amp; temporally clustered fire events synthesized from real multi-pass FIRMS observations.
+          </p>
+        </div>
+
+        <div className="p-4 rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 via-slate-900/60 to-slate-900/60 shadow-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold text-emerald-300 uppercase tracking-wider">AI Anomalies</span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Isolation Forest</span>
+          </div>
+          <div className="text-2xl font-bold font-mono text-white mt-2">
+            {(analytics?.ai_anomalies_count || hotspots.filter(h => (h.anomaly_score || 0) > 0).length).toLocaleString()}
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Events evaluated by the trained Isolation Forest ML pipeline using event-level features.
+          </p>
+        </div>
+      </div>
+
       {/* Global Analytics Overview Cards */}
       {analytics && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

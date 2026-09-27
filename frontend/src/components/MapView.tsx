@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { 
   MapContainer, 
   TileLayer, 
-  Circle, 
   Marker, 
   Popup, 
   Tooltip, 
@@ -11,8 +10,6 @@ import {
 } from 'react-leaflet';
 import L from 'leaflet';
 import { 
-  Crosshair, 
-  Compass, 
   Factory, 
   Flame,
   Globe
@@ -21,27 +18,11 @@ import type { CanonicalEvent, Facility } from '../types';
 import { getClassificationColor, getPriorityColor } from '../utils/formatters';
 
 // Geographic Coordinates
+export const WORLD_CENTER: [number, number] = [20.0, 0.0];
+export const WORLD_ZOOM = 2;
+
 export const INDIA_CENTER: [number, number] = [22.5937, 78.9629];
 export const INDIA_ZOOM = 5;
-
-export const GIASPURA_CENTER: [number, number] = [30.875625, 75.898481];
-export const GIASPURA_ZOOM = 13.5;
-export const GIASPURA_RADIUS_METERS = 15000; // 15 km buffer
-
-// Haversine distance helper (meters)
-function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
 
 interface MapViewProps {
   events: CanonicalEvent[];
@@ -51,41 +32,23 @@ interface MapViewProps {
   investigationCoord?: [number, number] | null;
 }
 
-// Controller component: Starts centered on India and smoothly flies to Giaspura
+// Controller component: Smoothly flies to requested target coordinates
 function MapController({ 
   targetCenter, 
   targetZoom,
-  initialAnimate = true
 }: { 
   targetCenter: [number, number]; 
   targetZoom: number;
   initialAnimate?: boolean;
 }) {
   const map = useMap();
-  const animatedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (initialAnimate && !animatedRef.current) {
-      animatedRef.current = true;
-      // Start centered on national India overview
-      map.setView(INDIA_CENTER, INDIA_ZOOM, { animate: false });
-      
-      // Smoothly fly in to the Giaspura monitoring zone
-      const timer = setTimeout(() => {
-        map.flyTo(targetCenter, targetZoom, {
-          duration: 2.0,
-          easeLinearity: 0.25,
-        });
-      }, 350);
-
-      return () => clearTimeout(timer);
-    } else {
-      map.flyTo(targetCenter, targetZoom, {
-        duration: 1.2,
-        easeLinearity: 0.25,
-      });
-    }
-  }, [targetCenter, targetZoom, map, initialAnimate]);
+    map.flyTo(targetCenter, targetZoom, {
+      duration: 1.2,
+      easeLinearity: 0.25,
+    });
+  }, [targetCenter, targetZoom, map]);
 
   return null;
 }
@@ -107,19 +70,6 @@ function createEventIcon(classification: string, isAnomaly: boolean, isSelected:
   });
 }
 
-// Center beacon icon for Giaspura
-const centerIcon = L.divIcon({
-  className: 'fv-center-icon',
-  html: `
-    <div style="position:relative; width:22px; height:22px; display:flex; align-items:center; justify-content:center;">
-      <div style="position:absolute; width:22px; height:22px; border-radius:50%; background:rgba(56,189,248,0.4); animation:markerPing 2s infinite;"></div>
-      <div style="width:12px; height:12px; border-radius:50%; background:#38bdf8; border:2px solid #ffffff; box-shadow:0 0 12px #38bdf8;"></div>
-    </div>
-  `,
-  iconSize: [22, 22],
-  iconAnchor: [11, 11],
-});
-
 export const MapView: React.FC<MapViewProps> = ({
   events,
   facilities,
@@ -129,11 +79,10 @@ export const MapView: React.FC<MapViewProps> = ({
 }) => {
   const [showEvents, setShowEvents] = useState<boolean>(true);
   const [showFacilities, setShowFacilities] = useState<boolean>(true);
-  const [showBuffer, setShowBuffer] = useState<boolean>(true);
   const [tileMode, setTileMode] = useState<'dark' | 'satellite' | 'street'>('dark');
   const [mapTarget, setMapTarget] = useState<{ center: [number, number]; zoom: number }>({
-    center: GIASPURA_CENTER,
-    zoom: GIASPURA_ZOOM,
+    center: WORLD_CENTER,
+    zoom: WORLD_ZOOM,
   });
 
   const tileUrls = {
@@ -142,34 +91,34 @@ export const MapView: React.FC<MapViewProps> = ({
     street: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   };
 
-  // Filter facilities strictly to Giaspura / Punjab region (within 35 km)
-  const giaspuraFacilities = useMemo(() => {
+  // Support global facilities across the entire world
+  const validFacilities = useMemo(() => {
     return facilities.filter((f) => {
-      if (f.id.startsWith('IND-GIAS') || f.id === 'HS-IND-001' || f.id.startsWith('HS-IND')) {
-        return true;
-      }
-      const dist = calculateDistanceMeters(GIASPURA_CENTER[0], GIASPURA_CENTER[1], f.latitude, f.longitude);
-      return dist <= 35000;
+      const lat = Number(f.latitude);
+      const lon = Number(f.longitude);
+      return Number.isFinite(lat) && Number.isFinite(lon);
     });
   }, [facilities]);
 
-  // Filter events strictly to Giaspura study region
-  const giaspuraEvents = useMemo(() => {
+  // Support global events across the entire world
+  const validEvents = useMemo(() => {
     return events.filter((ev) => {
       const lat = Number(ev.latitude);
       const lon = Number(ev.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
-      const dist = calculateDistanceMeters(GIASPURA_CENTER[0], GIASPURA_CENTER[1], lat, lon);
-      return dist <= 35000;
+      return Number.isFinite(lat) && Number.isFinite(lon);
     });
   }, [events]);
 
-  const handleFlyToGiaspura = () => {
-    setMapTarget({ center: GIASPURA_CENTER, zoom: GIASPURA_ZOOM });
+  const handleFlyToWorld = () => {
+    setMapTarget({ center: WORLD_CENTER, zoom: WORLD_ZOOM });
   };
 
   const handleFlyToIndia = () => {
     setMapTarget({ center: INDIA_CENTER, zoom: INDIA_ZOOM });
+  };
+
+  const handleFlyToUS = () => {
+    setMapTarget({ center: [39.5, -98.35], zoom: 4 });
   };
 
   return (
@@ -187,7 +136,7 @@ export const MapView: React.FC<MapViewProps> = ({
             title="Toggle Fire Events"
           >
             <Flame className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Events ({giaspuraEvents.length})</span>
+            <span className="hidden sm:inline">Events ({validEvents.length})</span>
           </button>
 
           <button
@@ -198,39 +147,37 @@ export const MapView: React.FC<MapViewProps> = ({
             title="Toggle Industrial Facilities"
           >
             <Factory className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Facilities ({giaspuraFacilities.length})</span>
-          </button>
-
-          <button
-            onClick={() => setShowBuffer(!showBuffer)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
-              showBuffer ? 'bg-cyan-500/20 text-cyan-300 font-semibold' : 'text-slate-400 hover:text-white'
-            }`}
-            title="Toggle 15km Buffer"
-          >
-            <Crosshair className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">15km Zone</span>
+            <span className="hidden sm:inline">Facilities ({validFacilities.length})</span>
           </button>
         </div>
 
         {/* View Zoom Presets */}
         <div className="glass-panel p-1.5 rounded-xl flex items-center gap-1 text-xs text-slate-300">
           <button
+            onClick={handleFlyToWorld}
+            className="px-2.5 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-1 transition-colors"
+            title="Zoom out to Global World View"
+          >
+            <Globe className="h-3.5 w-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">World View</span>
+          </button>
+
+          <button
             onClick={handleFlyToIndia}
             className="px-2.5 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-1 transition-colors"
-            title="Zoom out to India National View"
+            title="Zoom to India View"
           >
             <Globe className="h-3.5 w-3.5 text-amber-400" />
             <span className="hidden sm:inline">India View</span>
           </button>
 
           <button
-            onClick={handleFlyToGiaspura}
-            className="px-2.5 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 font-semibold flex items-center gap-1 border border-cyan-500/30 transition-colors shadow-sm shadow-cyan-500/10"
-            title="Focus on Giaspura, Ludhiana Monitoring Zone"
+            onClick={handleFlyToUS}
+            className="px-2.5 py-1.5 rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white flex items-center gap-1 transition-colors"
+            title="Zoom to North America View"
           >
-            <Compass className="h-3.5 w-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">Focus Giaspura</span>
+            <Globe className="h-3.5 w-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Americas</span>
           </button>
         </div>
 
@@ -267,9 +214,9 @@ export const MapView: React.FC<MapViewProps> = ({
       <div className="absolute bottom-4 left-4 z-[400] glass-panel p-3 rounded-xl text-xs space-y-1.5 hidden md:block max-w-[240px]">
         <div className="flex items-center justify-between pb-1 mb-1 border-b border-slate-700/60">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-            Giaspura Legend
+            Map Legend
           </span>
-          <span className="text-[10px] text-cyan-400 font-mono">15km Radius</span>
+          <span className="text-[10px] text-cyan-400 font-mono">Global</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-red-500 shadow-sm shadow-red-500"></span>
@@ -291,16 +238,12 @@ export const MapView: React.FC<MapViewProps> = ({
           <span className="h-2.5 w-2.5 rounded-full bg-slate-400 border border-slate-300"></span>
           <span className="text-slate-300">Monitored Industrial Site</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400"></span>
-          <span className="text-slate-300">Giaspura Monitoring Point</span>
-        </div>
       </div>
 
       {/* Leaflet Map Container */}
       <MapContainer
-        center={INDIA_CENTER}
-        zoom={INDIA_ZOOM}
+        center={WORLD_CENTER}
+        zoom={WORLD_ZOOM}
         scrollWheelZoom={true}
         className="w-full h-full"
       >
@@ -319,35 +262,9 @@ export const MapView: React.FC<MapViewProps> = ({
           maxZoom={19}
         />
 
-        {/* 15 km Regional Monitoring Buffer */}
-        {showBuffer && (
-          <Circle
-            center={GIASPURA_CENTER}
-            radius={GIASPURA_RADIUS_METERS}
-            pathOptions={{
-              color: '#38bdf8',
-              weight: 2,
-              dashArray: '6, 6',
-              fillColor: '#0284c7',
-              fillOpacity: 0.08,
-            }}
-          >
-            <Tooltip direction="top" opacity={0.9}>
-              15 km Regional Monitoring Buffer (Giaspura Study Area)
-            </Tooltip>
-          </Circle>
-        )}
-
-        {/* Giaspura Monitoring Center Marker */}
-        <Marker position={GIASPURA_CENTER} icon={centerIcon}>
-          <Tooltip direction="top" permanent={false}>
-            GIASPURA MONITORING CENTER (30.8756°N, 75.8985°E)
-          </Tooltip>
-        </Marker>
-
-        {/* Giaspura Facility Markers */}
+        {/* Industrial Facility Markers */}
         {showFacilities &&
-          giaspuraFacilities.map((facility) => {
+          validFacilities.map((facility) => {
             if (!Number.isFinite(facility.latitude) || !Number.isFinite(facility.longitude)) return null;
 
             return (
@@ -373,9 +290,9 @@ export const MapView: React.FC<MapViewProps> = ({
             );
           })}
 
-        {/* Giaspura Active Fire Event Markers */}
+        {/* Active Fire Event Markers (Global & Fallback) */}
         {showEvents &&
-          giaspuraEvents.map((event) => {
+          validEvents.map((event) => {
             const lat = Number(event.latitude);
             const lon = Number(event.longitude);
             if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
@@ -408,6 +325,28 @@ export const MapView: React.FC<MapViewProps> = ({
                     </div>
 
                     <div className="space-y-1 text-[11px] text-slate-300 border-t border-slate-700/60 pt-2 font-mono">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400">Source:</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          event.source === 'NASA_FIRMS'
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : 'bg-amber-500/20 text-amber-300'
+                        }`}>
+                          {event.source === 'NASA_FIRMS' ? 'NASA FIRMS' : event.source}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400">ML Status:</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          event.ml_status === 'evaluated'
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : event.ml_status === 'not_evaluated'
+                            ? 'bg-slate-500/20 text-slate-300'
+                            : 'bg-amber-500/20 text-amber-300'
+                        }`}>
+                          {(event.ml_status || 'not_evaluated').toUpperCase()}
+                        </span>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-slate-400">Risk Score:</span>
                         <span className="font-bold text-cyan-300">{event.risk_score}/100</span>

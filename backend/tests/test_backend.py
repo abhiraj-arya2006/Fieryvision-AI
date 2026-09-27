@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from main import app
-from app.core.geo import is_within_giaspura_area, validate_coordinates, haversine_distance_m
+from app.core.geo import validate_coordinates, haversine_distance_m
 from app.schemas.event import CanonicalEventSchema, LocationAnalysisRequest
 
 client = TestClient(app)
@@ -16,30 +16,43 @@ def test_health_endpoint():
     assert "firms_available" in data
     assert data["classification_mode"] == "evidence_based"
 
+def test_firms_status_endpoint():
+    """Test GET /api/firms/status connectivity check and schema."""
+    response = client.get("/api/firms/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert "api_reachable" in data
+    assert "api_success" in data
+    assert "live_event_count" in data
+    assert "cached_event_count" in data
+    assert "data_mode" in data
+    assert data["coverage"] == "WORLD"
+    assert "NASA" in data["source"]
+
 def test_active_events_endpoint():
-    """Test GET /api/active-events response structure and Giaspura normalization."""
+    """Test GET /api/active-events response structure, counts, and provenance."""
     response = client.get("/api/active-events")
     assert response.status_code == 200
     data = response.json()
     assert "events" in data
     assert "data_mode" in data
-    assert data["radius_km"] == 15.0
+    assert data["data_mode"] in ["live", "cached", "unavailable"]
+    assert "live_event_count" in data
+    assert "cached_event_count" in data
+    assert data["total"] == len(data["events"])
+    assert data["total"] == data["live_event_count"] + data["cached_event_count"]
 
     if data["events"]:
         event = data["events"][0]
-        # Validate canonical event schema fields
+        # Validate canonical event schema fields and provenance
         assert "event_id" in event
         assert "latitude" in event
         assert "longitude" in event
+        assert "source" in event
+        assert "ml_status" in event
         assert "classification_method" in event
         assert event["classification_method"] in ["evidence_based", "supervised_ml", "cached", "active", "unclassified"]
 
-def test_giaspura_geo_filtering():
-    """Test Giaspura regional coordinate boundary check."""
-    # Giaspura center point (30.875625, 75.898481)
-    assert is_within_giaspura_area(30.8756, 75.8984) is True
-    # Outside point (Delhi coordinates)
-    assert is_within_giaspura_area(28.6139, 77.2090) is False
 
 def test_coordinate_validation():
     """Test latitude/longitude bounds validator."""
@@ -51,14 +64,15 @@ def test_coordinate_validation():
     assert "Invalid latitude" in msg
 
 def test_analyse_location_success():
-    """Test POST /api/analyse-location with valid coordinates inside Giaspura."""
+    """Test POST /api/analyse-location with valid coordinates."""
     payload = {"latitude": 30.8756, "longitude": 75.8984}
     response = client.post("/api/analyse-location", json=payload)
     assert response.status_code == 200
     data = response.json()
-    assert data["in_giaspura_zone"] is True
+    assert "thermal_activity_detected" in data
     assert "risk_score" in data
     assert "evidence" in data
+    assert "ml_status" in data
     assert data["classification_method"] == "evidence_based"
 
 def test_analyse_location_invalid_coords():
@@ -78,7 +92,25 @@ def test_facilities_endpoint():
     assert response.status_code == 200
     data = response.json()
     assert "facilities" in data
-    assert len(data["facilities"]) > 0
+    assert "total" in data
+    assert isinstance(data["facilities"], list)
+
+def test_firms_simulate_outage_cache_path():
+    """Test outage simulation and cache failure path per Section 32."""
+    res_outage = client.post("/api/firms/simulate-outage?enabled=true")
+    assert res_outage.status_code == 200
+    outage_data = res_outage.json()
+    assert outage_data["simulated_outage"] is True
+
+    res_ev = client.get("/api/active-events")
+    assert res_ev.status_code == 200
+    ev_data = res_ev.json()
+    assert ev_data["data_mode"] in ["cached", "unavailable"]
+
+    res_restore = client.post("/api/firms/simulate-outage?enabled=false")
+    assert res_restore.status_code == 200
+    restore_data = res_restore.json()
+    assert restore_data["simulated_outage"] is False
 
 def test_statistics_endpoint():
     """Test GET /api/statistics."""

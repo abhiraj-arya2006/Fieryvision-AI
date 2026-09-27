@@ -3,11 +3,12 @@ from fastapi import APIRouter, HTTPException, Query, Path
 from pydantic import BaseModel
 
 from app.core.config import settings
-from app.core.geo import validate_coordinates, haversine_distance_m, is_within_giaspura_area
+from app.core.geo import validate_coordinates, haversine_distance_m
 from app.schemas.event import (
     CanonicalEventSchema,
     ActiveEventsResponse,
     HealthResponse,
+    FirmsStatusResponse,
     LocationAnalysisRequest,
     LocationAnalysisResponse,
     FacilitiesResponse,
@@ -17,18 +18,22 @@ from app.schemas.event import (
     ChatRequest,
     ChatResponse
 )
-from app.services.firms_service import fetch_firms_active_events, HISTORICAL_GIASPURA_EVENTS
+from app.services.firms_service import fetch_firms_active_events, get_firms_status, set_simulated_outage
+from app.services.weather_service import weather_service
 from app.services.industrial_service import (
     get_all_facilities,
     find_nearest_facility,
     is_inside_industrial_zone,
-    get_landcover_context
+    get_landcover_context,
+    prefetch_landcover_batch
 )
-from app.services.temporal_service import analyze_temporal_persistence
+from app.services.temporal_service import analyze_temporal_persistence, build_spatial_index
 from app.services.evidence_service import evaluate_evidence
-from app.services.anomaly_service import detect_thermal_anomaly
+from app.services.anomaly_service import detect_thermal_anomaly, MLAnomalyResult
 from app.services.satellite_service import get_satellite_context_metadata
 from app.services.llm_service import generate_explanation, generate_chat_response
+from app.services.emergency_service import emergency_service
+from app.services.hotspot_service import hotspot_engine
 
 
 router = APIRouter()
@@ -47,26 +52,78 @@ async def get_health():
         data_mode="active" if firms_key_present else "cached"
     )
 
+@router.get("/firms/status", response_model=FirmsStatusResponse, tags=["FIRMS"])
+async def get_firms_status_endpoint():
+    """
+    Actually test the configured NASA FIRMS connection and report truthful status.
+    """
+    status_data = await get_firms_status()
+    return FirmsStatusResponse(**status_data)
+
+@router.post("/firms/simulate-outage", tags=["FIRMS"])
+async def simulate_outage_endpoint(enabled: bool = Query(..., description="Enable or disable simulated outage")):
+    """
+    Temporarily simulate NASA FIRMS outage for verification testing without deleting cache.
+    """
+    set_simulated_outage(enabled)
+    return {"simulated_outage": enabled}
+
+@router.get("/firms/raw-detections", tags=["FIRMS"])
+async def get_raw_detections(
+    limit: int = Query(default=1000, le=5000, description="Max raw observations to return"),
+    min_frp: Optional[float] = Query(default=None, description="Minimum FRP filter"),
+):
+    """
+    Retrieve individual real NASA FIRMS satellite observations directly without heavy ML clustering.
+    Preserves exact coordinates, FRP, brightness, acquisition timestamp, satellite, and confidence.
+    """
+    raw_events, data_mode, last_fetch, live_count, cached_count, freshness = await fetch_firms_active_events()
+    filtered = raw_events
+    if min_frp is not None:
+        filtered = [e for e in filtered if float(e.get("frp") or 0.0) >= min_frp]
+
+    sorted_events = sorted(filtered, key=lambda e: float(e.get("frp") or 0.0), reverse=True)
+    sample = sorted_events[:limit]
+
+    return {
+        "total_available": len(raw_events),
+        "data_mode": data_mode,
+        "freshness": freshness,
+        "last_successful_fetch": last_fetch,
+        "returned_count": len(sample),
+        "detections": sample
+    }
+
 @router.get("/active-events", response_model=ActiveEventsResponse, tags=["Events"])
 async def get_active_events():
     """
-    Retrieve active/recent FIRMS thermal anomalies filtered to Giaspura study area.
+    Retrieve active/recent FIRMS thermal anomalies with explicit provenance and ML anomaly scoring.
     """
-    raw_events, data_mode, last_updated = await fetch_firms_active_events()
+    raw_events, data_mode, last_fetch, live_count, cached_count, freshness = await fetch_firms_active_events()
     
     canonical_events: List[CanonicalEventSchema] = []
     
-    for ev in raw_events:
+    # Cap to top 250 most significant thermal observations to ensure fast response times
+    max_events = 250
+    if len(raw_events) > max_events:
+        eval_events = sorted(raw_events, key=lambda e: float(e.get("frp") or 0.0), reverse=True)[:max_events]
+    else:
+        eval_events = raw_events
+
+    spatial_idx = build_spatial_index(raw_events)
+    prefetch_landcover_batch([(ev["latitude"], ev["longitude"]) for ev in eval_events[:60]])
+    
+    for ev in eval_events:
         lat = ev["latitude"]
         lon = ev["longitude"]
         
-        fac, dist_m = find_nearest_facility(lat, lon)
-        inside_ind = is_inside_industrial_zone(lat, lon)
-        landcover = get_landcover_context(lat, lon)
-        temporal = analyze_temporal_persistence(lat, lon, raw_events)
+        fac, dist_m = find_nearest_facility(lat, lon, only_cached=True)
+        inside_ind = dist_m <= 800.0
+        landcover = get_landcover_context(lat, lon, distance_to_facility=dist_m, only_cached=True)
+        temporal = analyze_temporal_persistence(lat, lon, raw_events, spatial_index=spatial_idx)
         
         # ML Anomaly Detection (Isolation Forest)
-        is_anom, anom_score = detect_thermal_anomaly(ev, temporal)
+        ml_res = detect_thermal_anomaly(ev, temporal)
         
         evidence_eval = evaluate_evidence(
             lat=lat,
@@ -78,8 +135,8 @@ async def get_active_events():
             temporal_summary=temporal,
             frp=ev.get("frp"),
             daynight=ev.get("daynight"),
-            anomaly_score=anom_score,
-            anomaly_flag=is_anom
+            anomaly_score=ml_res.anomaly_score,
+            anomaly_flag=ml_res.is_anomaly
         )
         
         canonical_ev = CanonicalEventSchema(
@@ -93,6 +150,8 @@ async def get_active_events():
             confidence=ev.get("confidence"),
             satellite=ev.get("satellite"),
             daynight=ev.get("daynight"),
+            source=ev.get("source", "NASA_FIRMS"),
+            ml_status=ml_res.ml_status,
             nearest_facility_name=fac["name"] if fac else None,
             nearest_facility_type=fac["site_type"] if fac else None,
             distance_to_facility_m=round(dist_m, 1) if fac else None,
@@ -111,20 +170,25 @@ async def get_active_events():
             classification_confidence=evidence_eval["classification_confidence"],
             risk_score=evidence_eval["risk_score"],
             priority=evidence_eval["priority"],
-            anomaly_score=anom_score,
-            is_anomaly=is_anom,
-            anomaly_flag=is_anom,
+            anomaly_score=ml_res.anomaly_score,
+            is_anomaly=ml_res.is_anomaly,
+            anomaly_flag=ml_res.is_anomaly,
             evidence=evidence_eval["evidence"],
             explanation=None
         )
         canonical_events.append(canonical_ev)
 
+    eff_live = len(canonical_events) if data_mode == "live" else 0
+    eff_cached = len(canonical_events) if data_mode != "live" else 0
+
     return ActiveEventsResponse(
         total=len(canonical_events),
         data_mode=data_mode,
-        last_updated=last_updated,
-        giaspura_center={"latitude": settings.GIASPURA_LAT, "longitude": settings.GIASPURA_LON},
-        radius_km=settings.GIASPURA_RADIUS_KM,
+        freshness=freshness,
+        last_successful_fetch=last_fetch,
+        last_updated=datetime.now(timezone.utc).isoformat(),
+        live_event_count=eff_live,
+        cached_event_count=eff_cached,
         events=canonical_events
     )
 
@@ -133,12 +197,8 @@ async def get_event_details(event_id: str = Path(..., description="Target event 
     """
     Get complete available analysis for a single thermal event by ID.
     """
-    raw_events, data_mode, _ = await fetch_firms_active_events()
+    raw_events, data_mode, _, _, _, _ = await fetch_firms_active_events()
     target_ev = next((e for e in raw_events if e["event_id"] == event_id), None)
-    
-    if not target_ev:
-        # Check historical list fallback
-        target_ev = next((e for e in HISTORICAL_GIASPURA_EVENTS if e["event_id"] == event_id), None)
 
     if not target_ev:
         raise HTTPException(status_code=404, detail=f"Thermal event '{event_id}' not found.")
@@ -152,7 +212,7 @@ async def get_event_details(event_id: str = Path(..., description="Target event 
     temporal = analyze_temporal_persistence(lat, lon, raw_events)
     
     # ML Anomaly Detection (Isolation Forest)
-    is_anom, anom_score = detect_thermal_anomaly(target_ev, temporal)
+    ml_res = detect_thermal_anomaly(target_ev, temporal)
 
     evidence_eval = evaluate_evidence(
         lat=lat,
@@ -164,8 +224,8 @@ async def get_event_details(event_id: str = Path(..., description="Target event 
         temporal_summary=temporal,
         frp=target_ev.get("frp"),
         daynight=target_ev.get("daynight"),
-        anomaly_score=anom_score,
-        anomaly_flag=is_anom
+        anomaly_score=ml_res.anomaly_score,
+        anomaly_flag=ml_res.is_anomaly
     )
 
     analysis_payload = {
@@ -180,8 +240,8 @@ async def get_event_details(event_id: str = Path(..., description="Target event 
         "distance_to_facility_m": round(dist_m, 1) if fac else None,
         "landcover": landcover,
         "evidence": evidence_eval["evidence"],
-        "anomaly_score": anom_score,
-        "is_anomaly": is_anom
+        "anomaly_score": ml_res.anomaly_score,
+        "is_anomaly": ml_res.is_anomaly
     }
 
     explanation_text, _ = await generate_explanation(analysis_payload)
@@ -197,6 +257,8 @@ async def get_event_details(event_id: str = Path(..., description="Target event 
         confidence=target_ev.get("confidence"),
         satellite=target_ev.get("satellite"),
         daynight=target_ev.get("daynight"),
+        source=target_ev.get("source", "NASA_FIRMS"),
+        ml_status=ml_res.ml_status,
         nearest_facility_name=fac["name"] if fac else None,
         nearest_facility_type=fac["site_type"] if fac else None,
         distance_to_facility_m=round(dist_m, 1) if fac else None,
@@ -215,9 +277,9 @@ async def get_event_details(event_id: str = Path(..., description="Target event 
         classification_confidence=evidence_eval["classification_confidence"],
         risk_score=evidence_eval["risk_score"],
         priority=evidence_eval["priority"],
-        anomaly_score=anom_score,
-        is_anomaly=is_anom,
-        anomaly_flag=is_anom,
+        anomaly_score=ml_res.anomaly_score,
+        is_anomaly=ml_res.is_anomaly,
+        anomaly_flag=ml_res.is_anomaly,
         evidence=evidence_eval["evidence"],
         explanation=explanation_text
     )
@@ -225,7 +287,7 @@ async def get_event_details(event_id: str = Path(..., description="Target event 
 @router.get("/facilities", response_model=FacilitiesResponse, tags=["Facilities"])
 async def get_facilities():
     """
-    Retrieve cached industrial/geospatial facilities for Giaspura study area.
+    Retrieve active global hotspots and cached industrial facilities.
     """
     facilities_list = get_all_facilities()
     facility_schemas = [FacilitySchema(**fac) for fac in facilities_list]
@@ -239,7 +301,7 @@ async def get_statistics():
     """
     Return summary statistics distinguishing classified vs unclassified events and risk priorities.
     """
-    raw_events, data_mode, _ = await fetch_firms_active_events()
+    raw_events, data_mode, last_successful_fetch, live_count, cached_count, freshness = await fetch_firms_active_events()
     
     total = len(raw_events)
     industrial_cnt = 0
@@ -253,15 +315,19 @@ async def get_statistics():
     classified_cnt = 0
     unclassified_cnt = 0
 
-    for ev in raw_events:
+    sample_events = raw_events[:250] if len(raw_events) > 250 else raw_events
+    spatial_idx = build_spatial_index(sample_events)
+    prefetch_landcover_batch([(ev["latitude"], ev["longitude"]) for ev in sample_events[:60]])
+
+    for ev in sample_events:
         lat = ev["latitude"]
         lon = ev["longitude"]
-        fac, dist_m = find_nearest_facility(lat, lon)
-        inside_ind = is_inside_industrial_zone(lat, lon)
-        landcover = get_landcover_context(lat, lon)
-        temporal = analyze_temporal_persistence(lat, lon, raw_events)
+        fac, dist_m = find_nearest_facility(lat, lon, only_cached=True)
+        inside_ind = dist_m <= 800.0
+        landcover = get_landcover_context(lat, lon, distance_to_facility=dist_m, only_cached=True)
+        temporal = analyze_temporal_persistence(lat, lon, sample_events, spatial_index=spatial_idx)
         
-        is_anom, anom_score = detect_thermal_anomaly(ev, temporal)
+        ml_res = detect_thermal_anomaly(ev, temporal)
 
         evidence_eval = evaluate_evidence(
             lat=lat,
@@ -273,8 +339,8 @@ async def get_statistics():
             temporal_summary=temporal,
             frp=ev.get("frp"),
             daynight=ev.get("daynight"),
-            anomaly_score=anom_score,
-            anomaly_flag=is_anom
+            anomaly_score=ml_res.anomaly_score,
+            anomaly_flag=ml_res.is_anomaly
         )
 
         cls = evidence_eval["classification"]
@@ -303,6 +369,19 @@ async def get_statistics():
         else:
             low_priority_cnt += 1
 
+    if len(raw_events) > len(sample_events) and len(sample_events) > 0:
+        scale = len(raw_events) / len(sample_events)
+        industrial_cnt = int(industrial_cnt * scale)
+        persistent_cnt = int(persistent_cnt * scale)
+        natural_cnt = int(natural_cnt * scale)
+        agricultural_cnt = int(agricultural_cnt * scale)
+        critical_priority_cnt = int(critical_priority_cnt * scale)
+        high_priority_cnt = int(high_priority_cnt * scale)
+        moderate_priority_cnt = int(moderate_priority_cnt * scale)
+        low_priority_cnt = int(low_priority_cnt * scale)
+        classified_cnt = int(classified_cnt * scale)
+        unclassified_cnt = total - classified_cnt
+
     return StatisticsResponse(
         total_events=total,
         industrial_events=industrial_cnt,
@@ -321,9 +400,10 @@ async def get_statistics():
 @router.post("/analyse-location", response_model=LocationAnalysisResponse, tags=["Analysis"])
 async def analyse_location(payload: LocationAnalysisRequest):
     """
-    Coordinate-based AI investigation for arbitrary lat/lon input.
+    Coordinate-based AI investigation for arbitrary lat/lon input worldwide.
     Validates coordinates, evaluates nearby anomalies, facilities, landcover, temporal history,
-    computes evidence-based risk & ML anomaly score, and requests optional Qwen explanation.
+    computes evidence-based risk & ML anomaly score, discovers nearest emergency infrastructure,
+    reconciles Event Risk Score with Localized Risk Score (|diff| <= 8), and requests optional Qwen explanation.
     """
     valid, err_msg = validate_coordinates(payload.latitude, payload.longitude)
     if not valid:
@@ -332,28 +412,105 @@ async def analyse_location(payload: LocationAnalysisRequest):
     lat = payload.latitude
     lon = payload.longitude
 
-    dist_to_giaspura = haversine_distance_m(lat, lon, settings.GIASPURA_LAT, settings.GIASPURA_LON)
-    in_zone = dist_to_giaspura <= (settings.GIASPURA_RADIUS_KM * 1000.0)
+    raw_events, data_mode, last_successful_fetch, live_count, cached_count, freshness = await fetch_firms_active_events()
 
-    raw_events, data_mode, _ = await fetch_firms_active_events()
-
-    # Find thermal anomalies within 1000m
+    # Find thermal anomalies within 15km
+    search_radius_m = 15000.0
     nearby_thermal = [
         ev for ev in raw_events
-        if haversine_distance_m(lat, lon, ev["latitude"], ev["longitude"]) <= 1000.0
+        if haversine_distance_m(lat, lon, ev["latitude"], ev["longitude"]) <= search_radius_m
     ]
+    nearby_thermal.sort(key=lambda ev: haversine_distance_m(lat, lon, ev["latitude"], ev["longitude"]))
     thermal_detected = len(nearby_thermal) > 0
 
     fac, dist_m = find_nearest_facility(lat, lon)
     inside_ind = is_inside_industrial_zone(lat, lon)
-    landcover = get_landcover_context(lat, lon)
+    landcover = get_landcover_context(lat, lon, distance_to_facility=dist_m)
     temporal = analyze_temporal_persistence(lat, lon, raw_events)
 
     target_ev_data = nearby_thermal[0] if nearby_thermal else {"latitude": lat, "longitude": lon}
-    is_anom, anom_score = detect_thermal_anomaly(target_ev_data, temporal) if thermal_detected else (False, 0.0)
+    if thermal_detected:
+        ml_res = detect_thermal_anomaly(target_ev_data, temporal)
+    else:
+        ml_res = MLAnomalyResult(is_anomaly=False, anomaly_score=0.0, ml_status="not_evaluated")
 
     frp_val = nearby_thermal[0].get("frp") if nearby_thermal else None
     daynight_val = nearby_thermal[0].get("daynight") if nearby_thermal else None
+
+    # Discover expanding emergency response infrastructure (10km -> 25km -> 50km -> 100km -> 250km)
+    emergency_intel = await emergency_service.find_nearest_emergency_facilities(lat, lon)
+    nearest_fs = emergency_intel.get("nearest_fire_station")
+    nearest_hosp = emergency_intel.get("nearest_hospital")
+    nearest_burn = emergency_intel.get("nearest_burn_trauma")
+    emergency_facilities = emergency_intel.get("facilities", [])
+    emergency_radius_km = emergency_intel.get("search_radius_reached_km", 10.0)
+
+    # Reconcile Event Risk Score with Localized Risk Score
+    nearby_hotspots = hotspot_engine.get_hotspots_nearby(lat, lon, radius_km=25.0)
+    matched_hotspot = nearby_hotspots[0] if nearby_hotspots else None
+
+    if matched_hotspot:
+        event_risk_score = round(matched_hotspot.risk_score, 1)
+        matched_hotspot_id = matched_hotspot.id
+        matched_hotspot_name = matched_hotspot.name
+        matched_hotspot_distance_km = round(
+            haversine_distance_m(lat, lon, matched_hotspot.centroid_lat, matched_hotspot.centroid_lon) / 1000.0,
+            1
+        )
+    elif thermal_detected:
+        avg_frp = float(sum(float(e.get("frp") or 0.0) for e in nearby_thermal) / max(1, len(nearby_thermal)))
+        count = len(nearby_thermal)
+        base_risk = min(50.0, avg_frp * 1.5) + min(30.0, count * 2.0) + ((ml_res.anomaly_score or 0.0) * 20.0)
+        event_risk_score = round(max(10.0, min(95.0, base_risk)), 1)
+        matched_hotspot_id = None
+        matched_hotspot_name = None
+        matched_hotspot_distance_km = None
+    else:
+        event_risk_score = 0.0
+        matched_hotspot_id = None
+        matched_hotspot_name = None
+        matched_hotspot_distance_km = None
+
+    if thermal_detected or matched_hotspot:
+        local_adj = 0.0
+        if inside_ind:
+            local_adj += 3.5
+        elif dist_m <= 1500.0:
+            local_adj += 1.5
+
+        if ml_res.is_anomaly:
+            local_adj += 3.0
+
+        if daynight_val == "N":
+            local_adj += 2.0
+
+        if frp_val and float(frp_val) >= 20.0:
+            local_adj += 2.5
+        elif frp_val and float(frp_val) < 5.0:
+            local_adj -= 2.0
+
+        if "Industrial" in landcover or "Built-up" in landcover:
+            local_adj += 2.0
+        elif "Water" in landcover:
+            local_adj -= 4.0
+
+        # Strict constraint: abs(localized_risk_score - event_risk_score) <= 8.0
+        clamped_adj = max(-8.0, min(8.0, local_adj))
+        localized_risk_score = round(max(0.0, min(100.0, event_risk_score + clamped_adj)), 1)
+        risk_diff = round(localized_risk_score - event_risk_score, 1)
+    else:
+        localized_risk_score = 0.0
+        risk_diff = 0.0
+
+    # Determine priority based on localized risk
+    if localized_risk_score >= 85.0:
+        priority = "critical"
+    elif localized_risk_score >= 65.0:
+        priority = "high"
+    elif localized_risk_score >= 40.0:
+        priority = "moderate"
+    else:
+        priority = "low"
 
     evidence_eval = evaluate_evidence(
         lat=lat,
@@ -365,11 +522,11 @@ async def analyse_location(payload: LocationAnalysisRequest):
         temporal_summary=temporal,
         frp=frp_val,
         daynight=daynight_val,
-        anomaly_score=anom_score,
-        anomaly_flag=is_anom
+        anomaly_score=ml_res.anomaly_score,
+        anomaly_flag=ml_res.is_anomaly
     )
 
-    assessment_mode = "evidence_based" if thermal_detected else ("no_activity" if in_zone else "insufficient_evidence")
+    assessment_mode = "evidence_based" if thermal_detected else "no_activity"
 
     analysis_payload = {
         "event_id": f"COORD-({lat:.4f},{lon:.4f})",
@@ -377,14 +534,24 @@ async def analyse_location(payload: LocationAnalysisRequest):
         "longitude": lon,
         "classification": evidence_eval["classification"],
         "classification_method": evidence_eval["classification_method"],
-        "risk_score": evidence_eval["risk_score"],
-        "priority": evidence_eval["priority"],
+        "risk_score": localized_risk_score,
+        "event_risk_score": event_risk_score,
+        "localized_risk_score": localized_risk_score,
+        "risk_difference": risk_diff,
+        "matched_hotspot_id": matched_hotspot_id,
+        "matched_hotspot_name": matched_hotspot_name,
+        "matched_hotspot_distance_km": matched_hotspot_distance_km,
+        "priority": priority if thermal_detected else "low",
         "nearest_facility_name": fac["name"] if fac else "None",
         "distance_to_facility_m": round(dist_m, 1) if fac else None,
         "landcover": landcover,
         "evidence": evidence_eval["evidence"],
-        "anomaly_score": anom_score,
-        "is_anomaly": is_anom
+        "anomaly_score": ml_res.anomaly_score,
+        "is_anomaly": ml_res.is_anomaly,
+        "nearest_fire_station": nearest_fs.model_dump() if nearest_fs else None,
+        "nearest_hospital": nearest_hosp.model_dump() if nearest_hosp else None,
+        "nearest_burn_trauma": nearest_burn.model_dump() if nearest_burn else None,
+        "emergency_search_radius_km": emergency_radius_km,
     }
 
     explanation_text, _ = await generate_explanation(analysis_payload)
@@ -392,8 +559,6 @@ async def analyse_location(payload: LocationAnalysisRequest):
     return LocationAnalysisResponse(
         latitude=lat,
         longitude=lon,
-        in_giaspura_zone=in_zone,
-        distance_to_giaspura_center_m=round(dist_to_giaspura, 1),
         thermal_activity_detected=thermal_detected,
         assessment_mode=assessment_mode,
         active_anomalies_count=len(nearby_thermal),
@@ -406,11 +571,23 @@ async def analyse_location(payload: LocationAnalysisRequest):
         classification=evidence_eval["classification"] if thermal_detected else "unclassified",
         classification_method=evidence_eval["classification_method"],
         classification_confidence=evidence_eval["classification_confidence"] if thermal_detected else None,
-        risk_score=evidence_eval["risk_score"] if thermal_detected else 0.0,
-        priority=evidence_eval["priority"] if thermal_detected else "low",
-        anomaly_score=anom_score if thermal_detected else 0.0,
-        is_anomaly=is_anom if thermal_detected else False,
-        anomaly_flag=is_anom if thermal_detected else False,
+        risk_score=localized_risk_score,
+        event_risk_score=event_risk_score,
+        localized_risk_score=localized_risk_score,
+        risk_difference=risk_diff,
+        matched_hotspot_id=matched_hotspot_id,
+        matched_hotspot_name=matched_hotspot_name,
+        matched_hotspot_distance_km=matched_hotspot_distance_km,
+        nearest_fire_station=nearest_fs,
+        nearest_hospital=nearest_hosp,
+        nearest_burn_trauma=nearest_burn,
+        emergency_facilities=emergency_facilities,
+        emergency_search_radius_km=emergency_radius_km,
+        priority=priority if thermal_detected else "low",
+        ml_status=ml_res.ml_status,
+        anomaly_score=ml_res.anomaly_score if thermal_detected else 0.0,
+        is_anomaly=ml_res.is_anomaly if thermal_detected else False,
+        anomaly_flag=ml_res.is_anomaly if thermal_detected else False,
         evidence=evidence_eval["evidence"],
         explanation=explanation_text
     )
@@ -420,7 +597,7 @@ async def get_satellite_context(event_id: str = Path(..., description="Target ev
     """
     Retrieve satellite context imagery metadata for specified event.
     """
-    raw_events, _, _ = await fetch_firms_active_events()
+    raw_events, _, _, _, _, _ = await fetch_firms_active_events()
     target_ev = next((e for e in raw_events if e["event_id"] == event_id), None)
     
     if target_ev:
@@ -445,6 +622,22 @@ async def chat(payload: ChatRequest):
         raise HTTPException(status_code=400, detail="Question must not be empty.")
 
     context = payload.context or {}
+    if context.get("latitude") is not None and context.get("longitude") is not None:
+        if "nearest_fire_station" not in context or "nearest_hospital" not in context:
+            try:
+                em = await emergency_service.find_nearest_emergency_facilities(
+                    float(context["latitude"]),
+                    float(context["longitude"])
+                )
+                if em.get("nearest_fire_station") and "nearest_fire_station" not in context:
+                    context["nearest_fire_station"] = em["nearest_fire_station"].model_dump()
+                if em.get("nearest_hospital") and "nearest_hospital" not in context:
+                    context["nearest_hospital"] = em["nearest_hospital"].model_dump()
+                if em.get("nearest_burn_trauma") and "nearest_burn_trauma" not in context:
+                    context["nearest_burn_trauma"] = em["nearest_burn_trauma"].model_dump()
+            except Exception as em_err:
+                pass
+
     response_text, llm_ok = await generate_chat_response(payload.question, context)
     return ChatResponse(
         response=response_text or "- AI explanation unavailable — Ollama/Qwen service is offline.",
@@ -720,11 +913,13 @@ async def get_hotspot_incident_intelligence(hotspot_id: str = Path(..., descript
         nearby_industrial_facilities=industrial_facilities
     )
 
+    fire_str = f"{emergency.nearest_fire_station.name} ({emergency.nearest_fire_station.distance_m/1000.0:.2f} km)" if emergency.nearest_fire_station else "No mapped local fire station nearby"
+    hosp_str = f"{emergency.nearest_hospital.name} ({emergency.nearest_hospital.distance_m/1000.0:.2f} km)" if emergency.nearest_hospital else "No mapped medical center nearby"
     ai_summary = (
         f"• Thermal Profile: Active thermal hotspot '{detail.name}' observed with peak FRP of {detail.max_frp:.1f} MW and {detail.event_count} satellite detections.\n"
         f"• Atmospheric Vector: 10m wind at {wind.wind_speed_kmh} km/h from {wind.cardinal_direction} ({wind.wind_direction_deg:.0f}°) creates downwind transport bearing of {wind.downwind_bearing_deg:.1f}°.\n"
         f"• Planning Buffers: 1km planning buffer contains {emergency.buffer_1km.industrial_facilities_count} industrial sites and {emergency.buffer_1km.hydrants_count} hydrants. 3km planning buffer contains {emergency.buffer_3km.fire_stations_count} fire stations and {emergency.buffer_3km.hospitals_count} hospitals.\n"
-        f"• Immediate Response Resource: Nearest fire station is {emergency.nearest_fire_station.name if emergency.nearest_fire_station else 'Local Fire Service'} ({emergency.nearest_fire_station.distance_m/1000.0:.2f} km) and nearest hospital is {emergency.nearest_hospital.name if emergency.nearest_hospital else 'Regional Medical Center'} ({emergency.nearest_hospital.distance_m/1000.0:.2f} km)."
+        f"• Immediate Response Resource: Nearest fire station: {fire_str}. Nearest hospital: {hosp_str}."
     )
 
     return IncidentIntelResponse(

@@ -14,7 +14,7 @@ def evaluate_evidence(
     anomaly_flag: Optional[bool] = None
 ) -> Dict[str, Any]:
     """
-    Evaluate empirical spatial, temporal, land-cover, and ML anomaly evidence for thermal events in Giaspura.
+    Evaluate empirical spatial, temporal, land-cover, and ML anomaly evidence for thermal events globally.
     Enforces scientific integrity:
     - Never fabricates ground truth.
     - Never claims proximity proves causation.
@@ -26,7 +26,7 @@ def evaluate_evidence(
     priority = "low"
     classification_confidence: Optional[float] = None
 
-    # 1. Proximity to Giaspura Industrial Facilities
+    # 1. Proximity to Industrial Facilities
     if inside_industrial_zone:
         if nearest_facility:
             fac_name = nearest_facility.get("name", "Industrial Facility")

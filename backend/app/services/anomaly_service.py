@@ -2,7 +2,7 @@
 
 import os
 import logging
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, NamedTuple
 
 logger = logging.getLogger("fieryvision.anomaly")
 
@@ -106,15 +106,31 @@ def extract_event_features(
     }
 
 
+class MLAnomalyResult(NamedTuple):
+    is_anomaly: bool
+    anomaly_score: Optional[float]
+    ml_status: str  # "evaluated", "unavailable", "not_evaluated"
+
+
+def get_ml_status() -> str:
+    """Return whether the Isolation Forest model pipeline is loaded and ready."""
+    detector = _load_detector()
+    if detector is not None and detector.is_fitted:
+        return "available"
+    return "unavailable"
+
+
 def detect_thermal_anomaly(
     event: Dict[str, Any],
     temporal: Optional[Dict[str, Any]] = None
-) -> Tuple[bool, float]:
+) -> MLAnomalyResult:
     """
     Run Isolation Forest inference to detect statistical thermal anomalies.
     
     Returns:
-        Tuple of (is_anomaly: bool, anomaly_score: float in [0.0, 1.0])
+        MLAnomalyResult(is_anomaly: bool, anomaly_score: Optional[float], ml_status: str)
+        where ml_status is 'evaluated' if model ran, or 'unavailable' if model could not run.
+        NEVER silently falls back to a heuristic score.
     """
     features = extract_event_features(event, temporal)
     detector = _load_detector()
@@ -124,21 +140,23 @@ def detect_thermal_anomaly(
             flag_arr, score_arr = detector.predict(features)
             is_anomaly = bool(flag_arr[0])
             anomaly_score = float(score_arr[0])
-            return is_anomaly, round(anomaly_score, 3)
+            return MLAnomalyResult(
+                is_anomaly=is_anomaly,
+                anomaly_score=round(anomaly_score, 3),
+                ml_status="evaluated"
+            )
         except Exception as err:
-            logger.warning("Detector inference error: %s. Using heuristic fallback.", err)
+            logger.warning("Detector inference error: %s. Anomaly scoring unavailable.", err)
+            return MLAnomalyResult(
+                is_anomaly=False,
+                anomaly_score=None,
+                ml_status="unavailable"
+            )
 
-    # Heuristic fallback if model pipeline is not yet loaded
-    frp_val = features["max_frp"]
-    bright_val = features["mean_brightness"]
-    det_30 = features["detections_30d"]
+    logger.warning("ThermalAnomalyDetector pipeline unavailable. Heuristic fallback prohibited.")
+    return MLAnomalyResult(
+        is_anomaly=False,
+        anomaly_score=None,
+        ml_status="unavailable"
+    )
 
-    norm_frp = min(1.0, frp_val / 50.0)
-    norm_bright = min(1.0, max(0.0, (bright_val - 300.0) / 70.0))
-    norm_pers = min(1.0, det_30 / 10.0)
-    
-    raw_score = (norm_frp * 0.45) + (norm_bright * 0.35) + (norm_pers * 0.20)
-    score = round(min(1.0, max(0.0, raw_score)), 3)
-    is_anomaly = (score >= 0.65 or frp_val >= 25.0)
-
-    return is_anomaly, score

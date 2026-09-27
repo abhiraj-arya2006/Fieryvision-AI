@@ -57,7 +57,7 @@ export const Navbar: React.FC = () => {
           </NavLink>
 
           <NavLink
-            to="/giaspura"
+            to="/map"
             className={({ isActive }) =>
               `flex items-center gap-2 rounded-lg px-3 py-2 text-xs sm:text-sm font-medium transition-all ${
                 isActive
@@ -67,7 +67,7 @@ export const Navbar: React.FC = () => {
             }
           >
             <MapIcon className="h-4 w-4 text-cyan-400" />
-            <span>Giaspura Console</span>
+            <span>Live Map</span>
           </NavLink>
 
           <NavLink

@@ -43,18 +43,55 @@ export interface CanonicalEvent {
 
   evidence: string[];
   explanation?: string | null;
+  source: string;
+  ml_status?: 'evaluated' | 'not_evaluated' | 'unavailable' | string;
+}
+
+export interface RawFirmsDetection {
+  event_id: string;
+  latitude: number;
+  longitude: number;
+  acq_date: string;
+  acq_time: string;
+  frp?: number | null;
+  brightness?: number | null;
+  confidence?: string | null;
+  satellite?: string | null;
+  daynight?: string | null;
+  source: string;
+}
+
+export interface RawDetectionsResponse {
+  total_available: number;
+  data_mode: string;
+  freshness: string;
+  last_successful_fetch?: string | null;
+  returned_count: number;
+  detections: RawFirmsDetection[];
 }
 
 export interface ActiveEventsResponse {
   total: number;
-  data_mode: 'active' | 'cached' | 'historical' | string;
+  data_mode: 'live' | 'cached' | 'unavailable' | string;
+  freshness: 'live' | 'cached' | 'unavailable' | string;
+  last_successful_fetch?: string | null;
   last_updated: string;
-  giaspura_center: {
-    latitude: number;
-    longitude: number;
-  };
-  radius_km: number;
+  live_event_count: number;
+  cached_event_count: number;
   events: CanonicalEvent[];
+}
+
+export interface FirmsStatusResponse {
+  api_reachable: boolean;
+  api_success: boolean;
+  live_event_count: number;
+  cached_event_count: number;
+  data_mode: string;
+  freshness: string;
+  source: string;
+  coverage: string;
+  last_successful_fetch?: string | null;
+  message?: string | null;
 }
 
 export interface HealthResponse {
@@ -73,8 +110,6 @@ export interface LocationAnalysisRequest {
 export interface LocationAnalysisResponse {
   latitude: number;
   longitude: number;
-  in_giaspura_zone: boolean;
-  distance_to_giaspura_center_m: number;
   thermal_activity_detected: boolean;
   assessment_mode: 'evidence_based' | 'supervised_ml' | 'no_activity' | 'insufficient_evidence' | string;
   active_anomalies_count: number;
@@ -98,7 +133,19 @@ export interface LocationAnalysisResponse {
   classification_method: string;
   classification_confidence?: number | null;
   risk_score: number;
+  event_risk_score?: number | null;
+  localized_risk_score?: number;
+  risk_difference?: number | null;
+  matched_hotspot_id?: string | null;
+  matched_hotspot_name?: string | null;
+  matched_hotspot_distance_km?: number | null;
+  nearest_fire_station?: EmergencyFacility | null;
+  nearest_hospital?: EmergencyFacility | null;
+  nearest_burn_trauma?: EmergencyFacility | null;
+  emergency_facilities?: EmergencyFacility[];
+  emergency_search_radius_km?: number | null;
   priority: string;
+  ml_status: 'evaluated' | 'not_evaluated' | 'unavailable' | string;
   anomaly_score?: number | null;
   is_anomaly: boolean;
   anomaly_flag: boolean;
@@ -123,7 +170,7 @@ export interface Facility {
 
 export interface FacilitiesResponse {
   total: number;
-  study_area: string;
+  study_area?: string;
   facilities: Facility[];
 }
 
@@ -265,6 +312,8 @@ export interface HotspotsListResponse {
 
 export interface HotspotAnalytics {
   total_active_hotspots: number;
+  raw_detections_count?: number;
+  ai_anomalies_count?: number;
   emerging_hotspots_count: number;
   persistent_hotspots_count: number;
   high_intensity_hotspots_count: number;
@@ -364,6 +413,7 @@ export interface EmergencyFacility {
   longitude: number;
   distance_m: number;
   bearing_deg: number;
+  cardinal_direction?: string | null;
   address?: string | null;
   phone?: string | null;
   operator?: string | null;

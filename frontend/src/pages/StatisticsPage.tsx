@@ -77,7 +77,7 @@ export const StatisticsPage: React.FC = () => {
                 Fire Intelligence Analytics & Statistics
               </h1>
               <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-                Aggregated telemetry, classification breakdown, and priority statistics for Giaspura monitoring.
+                Aggregated telemetry, classification breakdown, and priority statistics for global monitoring.
               </p>
             </div>
           </div>
@@ -248,7 +248,7 @@ export const StatisticsPage: React.FC = () => {
             <span className="text-slate-400">Model Architecture</span>
             <div className="text-sm font-semibold text-white">Isolation Forest (Unsupervised)</div>
             <p className="text-slate-400 text-[11px] mt-1">
-              Trained on historical Giaspura FIRMS detections to detect anomalous thermal intensity.
+              Trained on historical satellite FIRMS detections to evaluate anomalous thermal intensity.
             </p>
           </div>
 

@@ -12,21 +12,26 @@ import {
   Send, 
   Sparkles, 
   Compass,
-  RotateCcw
+  RotateCcw,
+  Siren,
+  Hospital
 } from 'lucide-react';
 import api from '../services/api';
 import type { LocationAnalysisResponse } from '../types';
 import { getPriorityColor, formatDistance } from '../utils/formatters';
 
-// Giaspura presets for fast 1-click testing
+// Global presets for fast 1-click testing with live real FIRMS data
 const PRESETS = [
-  { name: 'Giaspura Focal Point Cluster', lat: 30.876210, lon: 75.899120 },
-  { name: 'Ludhiana Textile Dyeing Plant', lat: 30.874100, lon: 75.897250 },
-  { name: 'Dhandari Kalan Industrial Hub', lat: 30.881000, lon: 75.905000 },
-  { name: 'Giaspura Boiler & Casting Works', lat: 30.872800, lon: 75.895100 },
+  { name: 'Brazil (Cerrado Basin Fire)', lat: -8.3507, lon: -44.1636 },
+  { name: 'Western Australia (Active Fire)', lat: -20.7977, lon: 127.6389 },
+  { name: 'California (Sierra Nevada, USA)', lat: 37.6264, lon: -119.6088 },
+  { name: 'Southern Africa (Niassa Fire)', lat: -11.9659, lon: 36.4186 },
+  { name: 'London, UK (No Fire Baseline)', lat: 51.5074, lon: -0.1278 },
 ];
 
 const SUGGESTED_QUESTIONS = [
+  "Are there any fire stations or hospitals nearby?",
+  "Explain the difference between Event Risk and Localized Risk",
   "Is this location inside an industrial zone?",
   "What is the nearest facility & distance?",
   "Explain the risk score and priority",
@@ -45,8 +50,8 @@ interface ChatMessage {
 export const AssistantPage: React.FC = () => {
   const [searchParams] = useSearchParams();
 
-  const [latitude, setLatitude] = useState<string>(searchParams.get('lat') || '30.875625');
-  const [longitude, setLongitude] = useState<string>(searchParams.get('lon') || '75.898481');
+  const [latitude, setLatitude] = useState<string>(searchParams.get('lat') || '39.5180');
+  const [longitude, setLongitude] = useState<string>(searchParams.get('lon') || '-121.5450');
   const [inputErrors, setInputErrors] = useState<{ latitude?: string; longitude?: string }>({});
 
   const [isAnalysing, setIsAnalysing] = useState<boolean>(false);
@@ -149,6 +154,12 @@ export const AssistantPage: React.FC = () => {
           classification: analysisData.classification,
           classification_method: analysisData.classification_method,
           risk_score: analysisData.risk_score,
+          event_risk_score: analysisData.event_risk_score,
+          localized_risk_score: analysisData.localized_risk_score,
+          risk_difference: analysisData.risk_difference,
+          matched_hotspot_id: analysisData.matched_hotspot_id,
+          matched_hotspot_name: analysisData.matched_hotspot_name,
+          matched_hotspot_distance_km: analysisData.matched_hotspot_distance_km,
           priority: analysisData.priority,
           nearest_facility_name: analysisData.nearest_facility_name,
           nearest_facility_type: analysisData.nearest_facility_type,
@@ -159,6 +170,10 @@ export const AssistantPage: React.FC = () => {
           active_anomalies_count: analysisData.active_anomalies_count,
           temporal_summary: analysisData.temporal_summary || {},
           evidence: analysisData.evidence || [],
+          nearest_fire_station: analysisData.nearest_fire_station,
+          nearest_hospital: analysisData.nearest_hospital,
+          nearest_burn_trauma: analysisData.nearest_burn_trauma,
+          emergency_search_radius_km: analysisData.emergency_search_radius_km,
         }
       : null;
 
@@ -203,7 +218,7 @@ export const AssistantPage: React.FC = () => {
               FieryVision AI Location Investigation
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-              Coordinate-based AI assessment, thermal anomaly detection, and local Qwen LLM chat · Giaspura Study Area
+              Coordinate-based AI assessment, thermal anomaly detection, and local Qwen LLM chat · Global Multi-Continent
             </p>
           </div>
         </div>
@@ -224,7 +239,7 @@ export const AssistantPage: React.FC = () => {
             <label className="text-xs font-medium text-slate-300">Latitude</label>
             <input
               type="text"
-              placeholder="e.g. 30.875625"
+              placeholder="e.g. 39.5180"
               value={latitude}
               onChange={(e) => {
                 setLatitude(e.target.value);
@@ -243,7 +258,7 @@ export const AssistantPage: React.FC = () => {
             <label className="text-xs font-medium text-slate-300">Longitude</label>
             <input
               type="text"
-              placeholder="e.g. 75.898481"
+              placeholder="e.g. -121.5450"
               value={longitude}
               onChange={(e) => {
                 setLongitude(e.target.value);
@@ -309,7 +324,7 @@ export const AssistantPage: React.FC = () => {
           </div>
           <h3 className="text-base font-semibold text-white">Awaiting Location Coordinates</h3>
           <p className="text-xs text-slate-400 max-w-md">
-            Enter a latitude and longitude above, or select one of the Giaspura industrial presets to run real-time geospatial risk assessment.
+            Enter a latitude and longitude above, or select one of the global test presets to run real-time geospatial risk assessment.
           </p>
         </div>
       )}
@@ -339,24 +354,43 @@ export const AssistantPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Risk Score */}
+            {/* Localized & Event Risk Score */}
             <div className="glass-panel p-4 rounded-xl border border-cyan-500/20">
-              <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                Risk Score
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Localized Risk Score
+                </div>
+                {analysisData.risk_difference !== undefined && analysisData.risk_difference !== null && analysisData.event_risk_score !== null && (
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 border border-cyan-500/30">
+                    Δ {analysisData.risk_difference > 0 ? `+${analysisData.risk_difference}` : analysisData.risk_difference}
+                  </span>
+                )}
               </div>
               <div className="mt-1 flex items-baseline gap-1">
                 <span className="text-2xl font-bold font-mono text-white">
-                  {analysisData.risk_score}
+                  {analysisData.localized_risk_score ?? analysisData.risk_score}
                 </span>
                 <span className="text-xs text-slate-400">/ 100</span>
               </div>
               <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden mt-2">
                 <div
                   className={`h-full ${
-                    analysisData.risk_score >= 70 ? 'bg-red-500' : analysisData.risk_score >= 40 ? 'bg-orange-500' : 'bg-cyan-500'
+                    (analysisData.localized_risk_score ?? analysisData.risk_score) >= 70
+                      ? 'bg-red-500'
+                      : (analysisData.localized_risk_score ?? analysisData.risk_score) >= 40
+                      ? 'bg-orange-500'
+                      : 'bg-cyan-500'
                   }`}
-                  style={{ width: `${Math.max(5, analysisData.risk_score)}%` }}
+                  style={{ width: `${Math.max(5, analysisData.localized_risk_score ?? analysisData.risk_score)}%` }}
                 />
+              </div>
+              <div className="text-[11px] text-slate-400 mt-2 flex justify-between items-center">
+                <span>Event Risk:</span>
+                <span className="font-mono text-slate-200">
+                  {analysisData.event_risk_score !== null && analysisData.event_risk_score !== undefined
+                    ? `${analysisData.event_risk_score}/100`
+                    : 'N/A (No cluster)'}
+                </span>
               </div>
             </div>
 
@@ -375,25 +409,29 @@ export const AssistantPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Giaspura Buffer Proximity */}
+            {/* ML Anomaly Status */}
             <div className="glass-panel p-4 rounded-xl border border-cyan-500/20">
               <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                Giaspura Monitoring Zone
+                ML Anomaly Status
               </div>
               <div className="mt-1 text-lg font-bold font-mono text-white">
-                <span className={analysisData.in_giaspura_zone ? 'text-emerald-400' : 'text-slate-400'}>
-                  {analysisData.in_giaspura_zone ? 'Inside Zone (≤ 15km)' : 'Outside Regional Zone'}
+                <span className={
+                  analysisData.ml_status === 'evaluated' ? 'text-emerald-400' :
+                  analysisData.ml_status === 'not_evaluated' ? 'text-slate-400' : 'text-amber-400'
+                }>
+                  {analysisData.ml_status === 'evaluated' ? 'Evaluated' :
+                   analysisData.ml_status === 'not_evaluated' ? 'Not Evaluated' : 'Unavailable'}
                 </span>
               </div>
               <div className="text-[11px] text-slate-400 mt-2 font-mono">
-                {formatDistance(analysisData.distance_to_giaspura_center_m)} from center
+                {analysisData.inside_industrial_zone ? 'Inside Industrial Perimeter' : 'Outside Industrial Perimeter'}
               </div>
             </div>
 
           </div>
 
-          {/* 3-Column Detailed Analysis Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          {/* 4-Column Detailed Analysis Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
             
             {/* 1. Thermal & ML Intelligence */}
             <div className="glass-panel p-4 rounded-xl border border-slate-800 space-y-3">
@@ -443,8 +481,8 @@ export const AssistantPage: React.FC = () => {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Nearest Facility:</span>
-                  <span className="text-white font-medium text-right max-w-[170px] truncate" title={analysisData.nearest_facility_name || 'None'}>
-                    {analysisData.nearest_facility_name || 'None within 15km'}
+                  <span className="text-white font-medium text-right max-w-[140px] truncate" title={analysisData.nearest_facility_name || 'None'}>
+                    {analysisData.nearest_facility_name || 'None nearby'}
                   </span>
                 </div>
 
@@ -469,12 +507,81 @@ export const AssistantPage: React.FC = () => {
 
                 <div className="flex justify-between">
                   <span className="text-slate-400">Land Cover:</span>
-                  <span className="text-slate-300">{analysisData.landcover || 'Built-up / Industrial'}</span>
+                  <span className="text-slate-300 text-right max-w-[140px] truncate" title={analysisData.landcover || 'Unknown / unavailable'}>
+                    {analysisData.landcover || 'Unknown / unavailable'}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* 3. Temporal Persistence */}
+            {/* 3. Emergency Response Facilities */}
+            <div className="glass-panel p-4 rounded-xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <div className="flex items-center gap-2 text-cyan-400 font-semibold">
+                  <Siren className="h-4 w-4 text-red-400" />
+                  <span>Emergency Facilities</span>
+                </div>
+                <span className="text-[10px] font-mono text-slate-400">
+                  {analysisData.emergency_search_radius_km ? `${analysisData.emergency_search_radius_km}km probed` : '10-250km'}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                <div>
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-400 flex items-center gap-1">
+                      <Siren className="h-3 w-3 text-red-400" />
+                      <span>Fire Station:</span>
+                    </span>
+                    {analysisData.nearest_fire_station && (
+                      <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${
+                        analysisData.nearest_fire_station.distance_m <= 25000
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      }`}>
+                        {analysisData.nearest_fire_station.distance_m <= 25000 ? '<25km Response' : '>25km'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-white font-medium truncate mt-0.5" title={analysisData.nearest_fire_station?.name || 'None mapped'}>
+                    {analysisData.nearest_fire_station?.name || 'None within 250 km'}
+                  </div>
+                  {analysisData.nearest_fire_station && (
+                    <div className="text-[10px] text-cyan-300 font-mono mt-0.5">
+                      {(analysisData.nearest_fire_station.distance_m / 1000).toFixed(1)} km · {analysisData.nearest_fire_station.bearing_deg}° {analysisData.nearest_fire_station.cardinal_direction || ''}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2 border-t border-slate-800/80">
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-400 flex items-center gap-1">
+                      <Hospital className="h-3 w-3 text-cyan-400" />
+                      <span>Hospital:</span>
+                    </span>
+                    {analysisData.nearest_hospital && (
+                      <span className={`text-[9px] px-1 py-0.2 rounded font-mono ${
+                        analysisData.nearest_hospital.specialty_verified
+                          ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                          : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      }`}>
+                        {analysisData.nearest_hospital.specialty_verified ? 'Burn / Trauma' : 'General'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-white font-medium truncate mt-0.5" title={analysisData.nearest_hospital?.name || 'None mapped'}>
+                    {analysisData.nearest_hospital?.name || 'None within 250 km'}
+                  </div>
+                  {analysisData.nearest_hospital && (
+                    <div className="text-[10px] text-cyan-300 font-mono mt-0.5">
+                      {(analysisData.nearest_hospital.distance_m / 1000).toFixed(1)} km · {analysisData.nearest_hospital.bearing_deg}° {analysisData.nearest_hospital.cardinal_direction || ''}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 4. Temporal Persistence */}
             <div className="glass-panel p-4 rounded-xl border border-slate-800 space-y-3">
               <div className="flex items-center gap-2 text-cyan-400 font-semibold border-b border-slate-800 pb-2">
                 <Clock className="h-4 w-4" />
@@ -488,12 +595,12 @@ export const AssistantPage: React.FC = () => {
                 </div>
 
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Detections (7 Days):</span>
+                  <span className="text-slate-400">Detections (7D):</span>
                   <span className="font-mono text-white">{temporal.detections_7d ?? 'None'}</span>
                 </div>
 
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Detections (30 Days):</span>
+                  <span className="text-slate-400">Detections (30D):</span>
                   <span className="font-mono text-white">{temporal.detections_30d ?? 'None'}</span>
                 </div>
 

@@ -1,19 +1,19 @@
 # 🔥 FieryVision AI
 
-**AI-Powered Industrial Fire Risk Detection & Satellite Intelligence Monitoring Platform**  
-*Target Study Area: Giaspura, Ludhiana, Punjab, India (30.875625°N, 75.898481°E · 15 km Regional Buffer)*
+**Global AI-Powered Industrial Fire Risk Detection & Satellite Intelligence Monitoring Platform**  
+*Global Coverage · Near-Real-Time NASA FIRMS Telemetry · Dynamic Hotspot Clustering*
 
 ---
 
 ## 📌 Project Overview
 
-**FieryVision AI** is an industrial thermal anomaly detection and wildfire intelligence platform. It fuses near-real-time satellite thermal imaging (NASA FIRMS / VIIRS / MODIS) with high-resolution landcover data (ESA WorldCover), regional geospatial facility directories, temporal persistence analysis, and unsupervised Machine Learning (Isolation Forest) to detect and prioritize industrial heat anomalies and fire threats.
+**FieryVision AI** is a global industrial thermal anomaly detection and wildfire intelligence platform. It fuses near-real-time satellite thermal imaging (NASA FIRMS / VIIRS / MODIS) with high-resolution landcover data (ESA WorldCover), live OpenStreetMap industrial facility directories, temporal persistence analysis, meteorological wind dispersion modeling, and unsupervised Machine Learning (Isolation Forest) to detect and prioritize industrial heat anomalies and fire threats across the globe.
 
 ### Key Capabilities
-- **Geospatial Command Center:** Interactive Leaflet map displaying active thermal events, regional industrial facility clusters, and a 15 km regional buffer around Giaspura.
+- **Global Geospatial Command Center:** Interactive Leaflet map displaying active worldwide thermal events, dynamic hotspot clusters, and live OpenStreetMap industrial infrastructure.
 - **Evidence-Based Risk Scoring:** Multi-factor evidence engine calculating risk scores (0–100) and priority tiers (`CRITICAL`, `HIGH`, `MODERATE`, `LOW`).
 - **ML Anomaly Detection:** Server-side Isolation Forest pipeline flagging abnormal thermal signatures and intense thermal outliers against baseline operations.
-- **Arbitrary Coordinate AI Investigation:** On-demand analysis of any lat/lon coordinate with automatic proximity queries, landcover classification, and historical persistence lookups.
+- **Arbitrary Coordinate AI Investigation:** On-demand analysis of any lat/lon coordinate globally with automatic OSM proximity queries, ESA raster bounds validation, and historical persistence lookups.
 - **Local LLM Intelligence:** Grounded question answering via local Ollama (`qwen2.5:14b`) based strictly on real geospatial investigation context.
 - **Satellite Context Telemetry:** Multi-band sensor telemetry, spatial resolution, and satellite metadata inspection per thermal detection.
 
@@ -174,7 +174,9 @@ VITE_API_BASE_URL=http://localhost:8000 # Backend API base URL
 #### Running the Backend
 ```bash
 cd backend
-python -m uvicorn main:app --reload --port 8000
+python main.py
+# or via uvicorn directly:
+uvicorn main:app --reload --reload-dir app --reload-exclude venv --port 8000
 ```
 *API will be available at [http://localhost:8000](http://localhost:8000)*
 
@@ -196,11 +198,14 @@ All backend routes are documented interactively via OpenAPI / Swagger at:
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/health` | Health check, FIRMS availability, and classification mode |
-| `GET` | `/api/active-events` | Active/recent FIRMS thermal anomalies filtered to Giaspura 15km zone |
+| `GET` | `/api/firms/status` | Real NASA FIRMS connectivity status & cache health |
+| `GET` | `/api/firms/raw-detections` | Individual raw NASA FIRMS satellite observations |
+| `GET` | `/api/active-events` | Active/recent FIRMS thermal anomalies with ML anomaly scoring |
+| `GET` | `/api/hotspots` | Clustered global hotspots with pagination, risk tier & continent filters |
 | `GET` | `/api/events/{event_id}` | Detailed canonical analysis of an event (evidence, ML anomaly, telemetry) |
-| `GET` | `/api/facilities` | Industrial sites, stamping mills, and dyeing plants in Giaspura |
+| `GET` | `/api/facilities` | Industrial sites and active hotspot facilities |
 | `GET` | `/api/statistics` | Aggregated threat counts, classification metrics, priority breakdown |
-| `POST` | `/api/analyse-location` | Coordinate analysis (Lat/Lon) with spatial query, ML score, and evidence |
+| `POST` | `/api/analyse-location` | Global coordinate analysis (Lat/Lon) with spatial query, ML score, and evidence |
 | `GET` | `/api/satellite-context/{event_id}` | Satellite platform, sensor resolution, and spectral band metadata |
 | `POST` | `/api/chat` | Context-grounded Q&A via local Ollama LLM (`qwen2.5:14b`) |
 
@@ -232,6 +237,6 @@ npm run build
 ## 🛡️ Production & Deployment Notes
 
 - **CORS:** Configured in `backend/main.py` allowing `http://localhost:5173` and `http://127.0.0.1:5173`.
-- **Offline / Graceful Fallback:** If the NASA FIRMS API key is absent or unreachable, the system automatically uses verified baseline historical data for Giaspura without failing.
+- **Offline / Graceful Fallback:** If the NASA FIRMS API key is temporarily unreachable, the system automatically uses verified cached real NASA observations with truthful metadata without failing.
 - **LLM Decoupling:** If the local Ollama instance is not running, the system returns evidence-backed heuristic summaries without crashing the application.
 - **Security:** Secrets and credentials are kept in `.env` files and excluded via `.gitignore`.

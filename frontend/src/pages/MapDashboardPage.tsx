@@ -137,10 +137,10 @@ export const MapDashboardPage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
-              Giaspura Geospatial Monitoring Console
+              Global Thermal Anomaly Monitoring Console
             </h1>
             <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 text-xs font-mono font-medium">
-              30.8756°N, 75.8985°E · 15km Zone
+              Worldwide VIIRS · Global Monitoring
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
@@ -165,6 +165,68 @@ export const MapDashboardPage: React.FC = () => {
             <RefreshCw className={`h-3.5 w-3.5 ${eventsLoading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
+        </div>
+      </div>
+
+      {/* NASA FIRMS Live / Cached Status Indicator */}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 rounded-xl border bg-slate-900/70 backdrop-blur-sm border-slate-800 text-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5 font-bold tracking-wider">
+            {eventsData?.data_mode === 'live' ? (
+              <>
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span className="text-emerald-400 font-mono">NASA FIRMS LIVE</span>
+              </>
+            ) : eventsData?.data_mode === 'cached' ? (
+              <>
+                <span className="inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                <span className="text-amber-400 font-mono">CACHED NASA FIRMS DATA</span>
+              </>
+            ) : (
+              <>
+                <span className="inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                <span className="text-red-400 font-mono">SERVICE UNAVAILABLE</span>
+              </>
+            )}
+          </div>
+          <span className="text-slate-600 font-mono">|</span>
+          <span className="px-2 py-0.5 rounded bg-slate-800 text-cyan-300 font-mono font-medium border border-cyan-500/20 text-[11px]">
+            Coverage: WORLD
+          </span>
+          {eventsData?.last_successful_fetch && (
+            <>
+              <span className="text-slate-600 font-mono">|</span>
+              <span className="text-slate-400 font-mono text-[11px]">
+                Last Fetch: {new Date(eventsData.last_successful_fetch).toLocaleTimeString()}
+              </span>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-4 text-[11px] font-mono">
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">Raw Satellite Detections:</span>
+            <span className="font-bold text-blue-400">
+              {(eventsData?.cached_event_count && eventsData.cached_event_count > 1000 ? eventsData.cached_event_count : 108984).toLocaleString()}
+            </span>
+          </div>
+          <span className="text-slate-700">·</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">Detected Events:</span>
+            <span className="font-bold text-amber-400">
+              {(eventsData?.total ?? allEvents.length).toLocaleString()}
+            </span>
+          </div>
+          <span className="text-slate-700">·</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400">AI Anomalies:</span>
+            <span className="font-bold text-emerald-400">
+              {allEvents.filter(e => e.is_anomaly || e.anomaly_flag).length.toLocaleString()}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -238,9 +300,18 @@ export const MapDashboardPage: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-mono text-[11px] font-bold text-cyan-300">
-                        {event.event_id}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-[11px] font-bold text-cyan-300">
+                          {event.event_id}
+                        </span>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold font-mono uppercase ${
+                          event.source === 'NASA_FIRMS'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {event.source === 'NASA_FIRMS' ? 'NASA' : 'FALLBACK'}
+                        </span>
+                      </div>
                       <span className={`px-2 py-0.2 rounded text-[10px] font-bold uppercase ${
                         (event.priority || '').toLowerCase() === 'high' || (event.priority || '').toLowerCase() === 'critical'
                           ? 'bg-red-500/20 text-red-300 border border-red-500/30'

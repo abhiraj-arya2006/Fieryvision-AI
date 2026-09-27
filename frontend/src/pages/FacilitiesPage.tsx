@@ -2,27 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFacilities } from '../hooks/useFacilities';
 import { Factory, Search, MapPin, ExternalLink, ShieldCheck, RefreshCw, AlertCircle, Globe, Flame, Building2 } from 'lucide-react';
-import { GIASPURA_CENTER } from '../components/MapView';
 
-// Haversine calculation helper
-function calculateDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
 
 const REGION_FILTERS = [
   { id: 'all', label: 'All Global Sites' },
-  { id: 'giaspura', label: 'Giaspura Local' },
-  { id: 'Asia', label: 'India / Asia' },
+  { id: 'Asia', label: 'Asia' },
   { id: 'North America', label: 'North America' },
   { id: 'Europe', label: 'Europe' },
   { id: 'South America', label: 'South America' },
@@ -42,13 +26,7 @@ export const FacilitiesPage: React.FC = () => {
     let result = facilities;
 
     // Filter by Region
-    if (selectedRegion === 'giaspura') {
-      result = result.filter(
-        (f) =>
-          f.id.startsWith('IND-GIAS') ||
-          (f.address && f.address.toLowerCase().includes('giaspura'))
-      );
-    } else if (selectedRegion === 'Oceania_MiddleEast') {
+    if (selectedRegion === 'Oceania_MiddleEast') {
       result = result.filter(
         (f) =>
           f.continent === 'Oceania' ||
@@ -93,7 +71,7 @@ export const FacilitiesPage: React.FC = () => {
                 Global Monitored Facilities & Hotspot Directory
               </h1>
               <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-                Industrial plants, boiler complexes, and active thermal hotspots monitored across Giaspura and global regions.
+                Industrial plants, thermal complexes, and active hotspots monitored across global regions.
               </p>
             </div>
           </div>
@@ -163,13 +141,6 @@ export const FacilitiesPage: React.FC = () => {
       {/* Facilities Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((facility) => {
-          const distFromCenter = calculateDistanceMeters(
-            GIASPURA_CENTER[0],
-            GIASPURA_CENTER[1],
-            facility.latitude,
-            facility.longitude
-          );
-          const isLocalGiaspura = distFromCenter <= 60000;
           const isHotspot = facility.id.startsWith('HS-');
 
           return (
@@ -246,24 +217,16 @@ export const FacilitiesPage: React.FC = () => {
 
                 <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
                   <span>Location Context:</span>
-                  <span className={isLocalGiaspura ? 'text-cyan-300' : 'text-slate-300'}>
-                    {isLocalGiaspura
-                      ? `${(distFromCenter / 1000).toFixed(2)} km from Giaspura`
-                      : `${facility.continent || 'Global'} (${facility.country || 'International'})`}
+                  <span className="text-slate-300">
+                    {facility.continent || 'Global'} ({facility.country || 'International'})
                   </span>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 pt-1">
                   <button
-                    onClick={() => {
-                      if (isLocalGiaspura) {
-                        navigate(`/?lat=${facility.latitude}&lon=${facility.longitude}`);
-                      } else {
-                        navigate(`/hotspots?search=${encodeURIComponent(facility.name)}`);
-                      }
-                    }}
+                    onClick={() => navigate(`/?lat=${facility.latitude}&lon=${facility.longitude}`)}
                     className="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1 transition-colors border border-slate-700"
-                    title={isLocalGiaspura ? 'View on Giaspura Live Map' : 'View on Global Map'}
+                    title="View on Global Map"
                   >
                     <MapPin className="h-3 w-3 text-cyan-400" />
                     <span>Map</span>

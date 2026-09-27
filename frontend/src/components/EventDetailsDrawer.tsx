@@ -49,10 +49,19 @@ export const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
             <Flame className="h-5 w-5" />
           </div>
           <div>
-            <div className="text-[11px] font-mono text-cyan-400 uppercase tracking-wider">
-              {event.event_id}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-cyan-400 uppercase tracking-wider">
+                {event.event_id}
+              </span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono uppercase tracking-wider border ${
+                event.source === 'NASA_FIRMS'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+              }`}>
+                {event.source === 'NASA_FIRMS' ? 'Source: NASA FIRMS' : 'Source: FALLBACK'}
+              </span>
             </div>
-            <h2 className="text-base font-bold text-white leading-tight">
+            <h2 className="text-base font-bold text-white leading-tight mt-0.5">
               {event.classification || 'Thermal Anomaly'}
             </h2>
           </div>
@@ -131,6 +140,30 @@ export const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
           
           <div className="divide-y divide-slate-800/80">
             <div className="px-3.5 py-2 flex items-center justify-between">
+              <span className="text-slate-400">Data Source</span>
+              <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
+                event.source === 'NASA_FIRMS'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              }`}>
+                {event.source === 'NASA_FIRMS' ? 'Source: NASA FIRMS' : `Source: ${event.source}`}
+              </span>
+            </div>
+
+            <div className="px-3.5 py-2 flex items-center justify-between">
+              <span className="text-slate-400">ML Evaluation Status</span>
+              <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
+                event.ml_status === 'evaluated'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : event.ml_status === 'not_evaluated'
+                  ? 'bg-slate-500/20 text-slate-300 border border-slate-500/30'
+                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              }`}>
+                {(event.ml_status || 'not_evaluated').toUpperCase()}
+              </span>
+            </div>
+
+            <div className="px-3.5 py-2 flex items-center justify-between">
               <span className="text-slate-400">Coordinates</span>
               <span className="font-mono text-white font-medium">
                 {event.latitude.toFixed(5)}°N, {event.longitude.toFixed(5)}°E
@@ -206,13 +239,13 @@ export const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
             <div className="px-3.5 py-2 flex items-center justify-between">
               <span className="text-slate-400">Inside Industrial Zone</span>
               <span className={`font-semibold ${event.inside_industrial_zone ? 'text-emerald-400' : 'text-slate-400'}`}>
-                {event.inside_industrial_zone ? 'Yes (Giaspura Zone)' : 'No'}
+                {event.inside_industrial_zone ? 'Yes' : 'No'}
               </span>
             </div>
 
             <div className="px-3.5 py-2 flex items-center justify-between">
               <span className="text-slate-400">Land Cover</span>
-              <span className="text-slate-300 font-medium">{event.landcover || 'Built-up / Industrial'}</span>
+              <span className="text-slate-300 font-medium">{event.landcover || 'Unknown / unavailable'}</span>
             </div>
 
             <div className="px-3.5 py-2 flex items-center justify-between">
