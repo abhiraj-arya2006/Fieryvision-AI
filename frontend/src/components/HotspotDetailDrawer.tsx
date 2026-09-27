@@ -192,7 +192,7 @@ export const HotspotDetailDrawer: React.FC<HotspotDetailDrawerProps> = ({
                 {current.id}
               </span>
               <span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider ${riskStyle.bg} ${riskStyle.text} border ${riskStyle.border}`}>
-                {current.risk_tier} RISK ({current.risk_score.toFixed(0)}/100)
+                EVENT RISK: {current.risk_score.toFixed(0)}/100 ({current.risk_tier})
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                 {current.status}

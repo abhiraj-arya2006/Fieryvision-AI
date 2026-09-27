@@ -182,6 +182,7 @@ class EmergencyFacilitySchema(BaseModel):
     longitude: float
     distance_m: float
     bearing_deg: float
+    cardinal_direction: Optional[str] = None
     address: Optional[str] = "Address not listed"
     phone: Optional[str] = "Contact number unavailable"
     operator: Optional[str] = None

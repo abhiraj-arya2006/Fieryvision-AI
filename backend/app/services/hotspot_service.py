@@ -495,6 +495,8 @@ class HotspotIntelligenceEngine:
         finally:
             db.close()
 
+    get_hotspots_nearby = get_nearby_hotspots
+
     def get_global_analytics(self) -> HotspotAnalyticsResponse:
         """Compute comprehensive global hotspot dashboard metrics."""
         db = SessionLocal()

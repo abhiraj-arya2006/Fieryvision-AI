@@ -133,6 +133,17 @@ export interface LocationAnalysisResponse {
   classification_method: string;
   classification_confidence?: number | null;
   risk_score: number;
+  event_risk_score?: number | null;
+  localized_risk_score?: number;
+  risk_difference?: number | null;
+  matched_hotspot_id?: string | null;
+  matched_hotspot_name?: string | null;
+  matched_hotspot_distance_km?: number | null;
+  nearest_fire_station?: EmergencyFacility | null;
+  nearest_hospital?: EmergencyFacility | null;
+  nearest_burn_trauma?: EmergencyFacility | null;
+  emergency_facilities?: EmergencyFacility[];
+  emergency_search_radius_km?: number | null;
   priority: string;
   ml_status: 'evaluated' | 'not_evaluated' | 'unavailable' | string;
   anomaly_score?: number | null;
@@ -402,6 +413,7 @@ export interface EmergencyFacility {
   longitude: number;
   distance_m: number;
   bearing_deg: number;
+  cardinal_direction?: string | null;
   address?: string | null;
   phone?: string | null;
   operator?: string | null;

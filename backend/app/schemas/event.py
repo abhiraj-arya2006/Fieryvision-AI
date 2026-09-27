@@ -1,6 +1,8 @@
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
+from app.schemas.hotspot import EmergencyFacilitySchema
+
 class CanonicalEventSchema(BaseModel):
     event_id: str
     latitude: float
@@ -94,6 +96,17 @@ class LocationAnalysisResponse(BaseModel):
     classification_method: str = "evidence_based"
     classification_confidence: Optional[float] = None
     risk_score: float = 0.0
+    event_risk_score: Optional[float] = None
+    localized_risk_score: float = 0.0
+    risk_difference: Optional[float] = None
+    matched_hotspot_id: Optional[str] = None
+    matched_hotspot_name: Optional[str] = None
+    matched_hotspot_distance_km: Optional[float] = None
+    nearest_fire_station: Optional[EmergencyFacilitySchema] = None
+    nearest_hospital: Optional[EmergencyFacilitySchema] = None
+    nearest_burn_trauma: Optional[EmergencyFacilitySchema] = None
+    emergency_facilities: List[EmergencyFacilitySchema] = Field(default_factory=list)
+    emergency_search_radius_km: Optional[float] = None
     priority: str = "low"
     ml_status: str = "not_evaluated"  # evaluated, not_evaluated, unavailable
     anomaly_score: Optional[float] = None

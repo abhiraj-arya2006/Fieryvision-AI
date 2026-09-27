@@ -40,6 +40,23 @@ def calculate_bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) ->
     return round((bearing + 360.0) % 360.0, 1)
 
 
+def bearing_to_cardinal(bearing_deg: float) -> str:
+    """Convert bearing angle in degrees to 16-point compass cardinal direction."""
+    directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                  "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+    idx = int((bearing_deg + 11.25) / 22.5) % 16
+    return directions[idx]
+
+
+OVERPASS_ENDPOINTS = [
+    settings.OVERPASS_API_URL,
+    "https://lz4.overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter"
+]
+
+EXPANDING_RADII_KM: List[float] = [10.0, 25.0, 50.0, 100.0, 250.0]
+
+
 class EmergencyCache:
     """In-memory cache for spatial emergency infrastructure queries."""
 
@@ -204,6 +221,7 @@ class EmergencyService:
                     longitude=cur["longitude"],
                     distance_m=round(dist, 1),
                     bearing_deg=bearing,
+                    cardinal_direction=bearing_to_cardinal(bearing),
                     address=cur.get("address", "Address not listed"),
                     phone=cur.get("phone", "Contact number unavailable"),
                     operator=cur.get("operator"),
@@ -213,86 +231,87 @@ class EmergencyService:
                     data_quality="VERIFIED_GEOSPATIAL"
                 ))
 
-        # 2. Attempt Overpass live query for dynamic global coverage
-        try:
-            overpass_query = f"""
-            [out:json][timeout:6];
-            (
-              node["amenity"="fire_station"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
-              way["amenity"="fire_station"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
-              node["amenity"="hospital"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
-              way["amenity"="hospital"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
-              node["emergency"="fire_hydrant"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
-            );
-            out center 15;
-            """
-            async with httpx.AsyncClient(timeout=settings.OVERPASS_REQUEST_TIMEOUT) as client:
-                res = await client.post(settings.OVERPASS_API_URL, data={"data": overpass_query})
-                if res.status_code == 200:
-                    data = res.json()
-                    elements = data.get("elements", [])
-                    for el in elements:
-                        tags = el.get("tags", {})
-                        el_lat = el.get("lat") or el.get("center", {}).get("lat")
-                        el_lon = el.get("lon") or el.get("center", {}).get("lon")
-                        if el_lat is None or el_lon is None:
-                            continue
+        # 2. Attempt Overpass live query across endpoints for dynamic global coverage
+        overpass_query = f"""
+        [out:json][timeout:6];
+        (
+          node["amenity"="fire_station"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
+          way["amenity"="fire_station"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
+          node["amenity"="hospital"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
+          way["amenity"="hospital"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
+          node["emergency"="fire_hydrant"](around:{int(radius_m)},{lat:.4f},{lon:.4f});
+        );
+        out center 25;
+        """
+        for endpoint in OVERPASS_ENDPOINTS:
+            try:
+                async with httpx.AsyncClient(timeout=settings.OVERPASS_REQUEST_TIMEOUT) as client:
+                    res = await client.post(endpoint, data={"data": overpass_query})
+                    if res.status_code == 200:
+                        data = res.json()
+                        elements = data.get("elements", [])
+                        for el in elements:
+                            tags = el.get("tags", {})
+                            el_lat = el.get("lat") or el.get("center", {}).get("lat")
+                            el_lon = el.get("lon") or el.get("center", {}).get("lon")
+                            if el_lat is None or el_lon is None:
+                                continue
 
-                        dist = haversine_distance_m(lat, lon, float(el_lat), float(el_lon))
-                        if dist > radius_m:
-                            continue
+                            dist = haversine_distance_m(lat, lon, float(el_lat), float(el_lon))
+                            if dist > radius_m:
+                                continue
 
-                        fac_id = f"OSM-{el.get('type', 'node')[0].upper()}-{el.get('id', '')}"
-                        
-                        # Determine facility type
-                        amenity = tags.get("amenity", "")
-                        emergency = tags.get("emergency", "")
-                        if amenity == "fire_station":
-                            ftype = "fire_station"
-                            name = tags.get("name") or "Local Fire Station"
-                            spec_ver = True
-                            spec_note = "Municipal fire fighting unit"
-                        elif amenity == "hospital":
-                            ftype = "hospital"
-                            name = tags.get("name") or "Hospital / Medical Center"
-                            # Check verified burn / trauma tags honestly
-                            spec = tags.get("healthcare:speciality", "").lower()
-                            trauma = tags.get("emergency", "").lower()
-                            if "burn" in spec or "trauma" in trauma or "burn" in tags.get("name", "").lower():
+                            fac_id = f"OSM-{el.get('type', 'node')[0].upper()}-{el.get('id', '')}"
+                            
+                            amenity = tags.get("amenity", "")
+                            emergency = tags.get("emergency", "")
+                            if amenity == "fire_station":
+                                ftype = "fire_station"
+                                name = tags.get("name") or "Local Fire Station"
                                 spec_ver = True
-                                spec_note = "BURN / TRAUMA — Verified emergency trauma unit"
-                            else:
+                                spec_note = "Municipal fire fighting unit"
+                            elif amenity == "hospital":
+                                ftype = "hospital"
+                                name = tags.get("name") or "Hospital / Medical Center"
+                                spec = tags.get("healthcare:speciality", "").lower()
+                                trauma = tags.get("emergency", "").lower()
+                                if "burn" in spec or "trauma" in trauma or "burn" in tags.get("name", "").lower():
+                                    spec_ver = True
+                                    spec_note = "BURN / TRAUMA — Verified emergency trauma unit"
+                                else:
+                                    spec_ver = False
+                                    spec_note = "Specialty capability not verified on OpenStreetMap"
+                            elif emergency == "fire_hydrant":
+                                ftype = "fire_hydrant"
+                                name = f"Fire Hydrant #{tags.get('ref', fac_id[-4:])}"
                                 spec_ver = False
-                                spec_note = "Specialty capability not verified on OpenStreetMap"
-                        elif emergency == "fire_hydrant":
-                            ftype = "fire_hydrant"
-                            name = f"Fire Hydrant #{tags.get('ref', fac_id[-4:])}"
-                            spec_ver = False
-                            spec_note = "Municipal pressurized hydrant"
-                        else:
-                            continue
+                                spec_note = "Municipal pressurized hydrant"
+                            else:
+                                continue
 
-                        # Avoid duplicating curated entries
-                        if not any(f.id == fac_id or haversine_distance_m(f.latitude, f.longitude, float(el_lat), float(el_lon)) < 60 for f in facilities):
-                            bearing = calculate_bearing_deg(lat, lon, float(el_lat), float(el_lon))
-                            facilities.append(EmergencyFacilitySchema(
-                                id=fac_id,
-                                name=name,
-                                facility_type=ftype,
-                                latitude=float(el_lat),
-                                longitude=float(el_lon),
-                                distance_m=round(dist, 1),
-                                bearing_deg=bearing,
-                                address=tags.get("addr:street") or tags.get("addr:full") or "Address not listed",
-                                phone=tags.get("phone") or tags.get("contact:phone") or "Contact number unavailable",
-                                operator=tags.get("operator"),
-                                specialty_verified=spec_ver,
-                                specialty_note=spec_note,
-                                source="OpenStreetMap Overpass API",
-                                data_quality="MAPPED_GEOSPATIAL"
-                            ))
-        except Exception as exc:
-            logger.debug("Overpass API query skipped (%s). Using curated geospatial data.", exc)
+                            if not any(f.id == fac_id or haversine_distance_m(f.latitude, f.longitude, float(el_lat), float(el_lon)) < 60 for f in facilities):
+                                bearing = calculate_bearing_deg(lat, lon, float(el_lat), float(el_lon))
+                                facilities.append(EmergencyFacilitySchema(
+                                    id=fac_id,
+                                    name=name,
+                                    facility_type=ftype,
+                                    latitude=float(el_lat),
+                                    longitude=float(el_lon),
+                                    distance_m=round(dist, 1),
+                                    bearing_deg=bearing,
+                                    cardinal_direction=bearing_to_cardinal(bearing),
+                                    address=tags.get("addr:street") or tags.get("addr:full") or "Address not listed",
+                                    phone=tags.get("phone") or tags.get("contact:phone") or "Contact number unavailable",
+                                    operator=tags.get("operator"),
+                                    specialty_verified=spec_ver,
+                                    specialty_note=spec_note,
+                                    source="OpenStreetMap Overpass API",
+                                    data_quality="MAPPED_GEOSPATIAL"
+                                ))
+                        break
+            except Exception as exc:
+                logger.debug("Overpass API query to %s skipped (%s).", endpoint, exc)
+                continue
 
         # Sort by distance
         facilities.sort(key=lambda x: x.distance_m)
@@ -300,6 +319,50 @@ class EmergencyService:
         # Cache results
         emergency_cache.set(lat, lon, radius_km, [f.model_dump() for f in facilities])
         return facilities
+
+    async def find_nearest_emergency_facilities(
+        self,
+        lat: float,
+        lon: float,
+        radii: Optional[List[float]] = None
+    ) -> Dict[str, Any]:
+        """
+        Expanding search radius (10 km -> 25 km -> 50 km -> 100 km -> 250 km)
+        using OpenStreetMap Overpass with early exit once both a fire station
+        and a hospital are identified.
+        """
+        search_radii = radii or EXPANDING_RADII_KM
+        all_found: Dict[str, EmergencyFacilitySchema] = {}
+        last_radius_probed = search_radii[0]
+
+        for r_km in search_radii:
+            last_radius_probed = r_km
+            facs = await self.get_nearby_emergency_infrastructure(lat, lon, radius_km=r_km)
+            for f in facs:
+                if f.id not in all_found:
+                    all_found[f.id] = f
+
+            fs = [f for f in all_found.values() if f.facility_type == "fire_station"]
+            hosp = [f for f in all_found.values() if f.facility_type == "hospital"]
+
+            # Early exit if at least one fire station AND one hospital are found
+            if len(fs) > 0 and len(hosp) > 0:
+                break
+
+        sorted_facilities = sorted(all_found.values(), key=lambda f: f.distance_m)
+        nearest_fs = next((f for f in sorted_facilities if f.facility_type == "fire_station"), None)
+        nearest_hosp = next((f for f in sorted_facilities if f.facility_type == "hospital"), None)
+        nearest_burn = next((f for f in sorted_facilities if f.facility_type == "hospital" and f.specialty_verified), None)
+
+        return {
+            "nearest_fire_station": nearest_fs,
+            "nearest_hospital": nearest_hosp,
+            "nearest_burn_trauma": nearest_burn,
+            "facilities": sorted_facilities[:15],
+            "search_radius_reached_km": last_radius_probed,
+            "fire_station_within_25km": (nearest_fs.distance_m <= 25000.0) if nearest_fs else False,
+            "hospital_within_25km": (nearest_hosp.distance_m <= 25000.0) if nearest_hosp else False,
+        }
 
     async def get_emergency_context_for_hotspot(
         self,

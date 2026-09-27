@@ -24,13 +24,16 @@ from app.services.industrial_service import (
     get_all_facilities,
     find_nearest_facility,
     is_inside_industrial_zone,
-    get_landcover_context
+    get_landcover_context,
+    prefetch_landcover_batch
 )
 from app.services.temporal_service import analyze_temporal_persistence, build_spatial_index
 from app.services.evidence_service import evaluate_evidence
 from app.services.anomaly_service import detect_thermal_anomaly, MLAnomalyResult
 from app.services.satellite_service import get_satellite_context_metadata
 from app.services.llm_service import generate_explanation, generate_chat_response
+from app.services.emergency_service import emergency_service
+from app.services.hotspot_service import hotspot_engine
 
 
 router = APIRouter()
@@ -108,6 +111,7 @@ async def get_active_events():
         eval_events = raw_events
 
     spatial_idx = build_spatial_index(raw_events)
+    prefetch_landcover_batch([(ev["latitude"], ev["longitude"]) for ev in eval_events[:60]])
     
     for ev in eval_events:
         lat = ev["latitude"]
@@ -115,7 +119,7 @@ async def get_active_events():
         
         fac, dist_m = find_nearest_facility(lat, lon, only_cached=True)
         inside_ind = dist_m <= 800.0
-        landcover = get_landcover_context(lat, lon, distance_to_facility=dist_m)
+        landcover = get_landcover_context(lat, lon, distance_to_facility=dist_m, only_cached=True)
         temporal = analyze_temporal_persistence(lat, lon, raw_events, spatial_index=spatial_idx)
         
         # ML Anomaly Detection (Isolation Forest)
@@ -313,13 +317,14 @@ async def get_statistics():
 
     sample_events = raw_events[:250] if len(raw_events) > 250 else raw_events
     spatial_idx = build_spatial_index(sample_events)
+    prefetch_landcover_batch([(ev["latitude"], ev["longitude"]) for ev in sample_events[:60]])
 
     for ev in sample_events:
         lat = ev["latitude"]
         lon = ev["longitude"]
         fac, dist_m = find_nearest_facility(lat, lon, only_cached=True)
         inside_ind = dist_m <= 800.0
-        landcover = get_landcover_context(lat, lon, distance_to_facility=dist_m)
+        landcover = get_landcover_context(lat, lon, distance_to_facility=dist_m, only_cached=True)
         temporal = analyze_temporal_persistence(lat, lon, sample_events, spatial_index=spatial_idx)
         
         ml_res = detect_thermal_anomaly(ev, temporal)
@@ -397,7 +402,8 @@ async def analyse_location(payload: LocationAnalysisRequest):
     """
     Coordinate-based AI investigation for arbitrary lat/lon input worldwide.
     Validates coordinates, evaluates nearby anomalies, facilities, landcover, temporal history,
-    computes evidence-based risk & ML anomaly score, and requests optional Qwen explanation.
+    computes evidence-based risk & ML anomaly score, discovers nearest emergency infrastructure,
+    reconciles Event Risk Score with Localized Risk Score (|diff| <= 8), and requests optional Qwen explanation.
     """
     valid, err_msg = validate_coordinates(payload.latitude, payload.longitude)
     if not valid:
@@ -431,6 +437,81 @@ async def analyse_location(payload: LocationAnalysisRequest):
     frp_val = nearby_thermal[0].get("frp") if nearby_thermal else None
     daynight_val = nearby_thermal[0].get("daynight") if nearby_thermal else None
 
+    # Discover expanding emergency response infrastructure (10km -> 25km -> 50km -> 100km -> 250km)
+    emergency_intel = await emergency_service.find_nearest_emergency_facilities(lat, lon)
+    nearest_fs = emergency_intel.get("nearest_fire_station")
+    nearest_hosp = emergency_intel.get("nearest_hospital")
+    nearest_burn = emergency_intel.get("nearest_burn_trauma")
+    emergency_facilities = emergency_intel.get("facilities", [])
+    emergency_radius_km = emergency_intel.get("search_radius_reached_km", 10.0)
+
+    # Reconcile Event Risk Score with Localized Risk Score
+    nearby_hotspots = hotspot_engine.get_hotspots_nearby(lat, lon, radius_km=25.0)
+    matched_hotspot = nearby_hotspots[0] if nearby_hotspots else None
+
+    if matched_hotspot:
+        event_risk_score = round(matched_hotspot.risk_score, 1)
+        matched_hotspot_id = matched_hotspot.id
+        matched_hotspot_name = matched_hotspot.name
+        matched_hotspot_distance_km = round(
+            haversine_distance_m(lat, lon, matched_hotspot.centroid_lat, matched_hotspot.centroid_lon) / 1000.0,
+            1
+        )
+    elif thermal_detected:
+        avg_frp = float(sum(float(e.get("frp") or 0.0) for e in nearby_thermal) / max(1, len(nearby_thermal)))
+        count = len(nearby_thermal)
+        base_risk = min(50.0, avg_frp * 1.5) + min(30.0, count * 2.0) + ((ml_res.anomaly_score or 0.0) * 20.0)
+        event_risk_score = round(max(10.0, min(95.0, base_risk)), 1)
+        matched_hotspot_id = None
+        matched_hotspot_name = None
+        matched_hotspot_distance_km = None
+    else:
+        event_risk_score = 0.0
+        matched_hotspot_id = None
+        matched_hotspot_name = None
+        matched_hotspot_distance_km = None
+
+    if thermal_detected or matched_hotspot:
+        local_adj = 0.0
+        if inside_ind:
+            local_adj += 3.5
+        elif dist_m <= 1500.0:
+            local_adj += 1.5
+
+        if ml_res.is_anomaly:
+            local_adj += 3.0
+
+        if daynight_val == "N":
+            local_adj += 2.0
+
+        if frp_val and float(frp_val) >= 20.0:
+            local_adj += 2.5
+        elif frp_val and float(frp_val) < 5.0:
+            local_adj -= 2.0
+
+        if "Industrial" in landcover or "Built-up" in landcover:
+            local_adj += 2.0
+        elif "Water" in landcover:
+            local_adj -= 4.0
+
+        # Strict constraint: abs(localized_risk_score - event_risk_score) <= 8.0
+        clamped_adj = max(-8.0, min(8.0, local_adj))
+        localized_risk_score = round(max(0.0, min(100.0, event_risk_score + clamped_adj)), 1)
+        risk_diff = round(localized_risk_score - event_risk_score, 1)
+    else:
+        localized_risk_score = 0.0
+        risk_diff = 0.0
+
+    # Determine priority based on localized risk
+    if localized_risk_score >= 85.0:
+        priority = "critical"
+    elif localized_risk_score >= 65.0:
+        priority = "high"
+    elif localized_risk_score >= 40.0:
+        priority = "moderate"
+    else:
+        priority = "low"
+
     evidence_eval = evaluate_evidence(
         lat=lat,
         lon=lon,
@@ -453,14 +534,24 @@ async def analyse_location(payload: LocationAnalysisRequest):
         "longitude": lon,
         "classification": evidence_eval["classification"],
         "classification_method": evidence_eval["classification_method"],
-        "risk_score": evidence_eval["risk_score"],
-        "priority": evidence_eval["priority"],
+        "risk_score": localized_risk_score,
+        "event_risk_score": event_risk_score,
+        "localized_risk_score": localized_risk_score,
+        "risk_difference": risk_diff,
+        "matched_hotspot_id": matched_hotspot_id,
+        "matched_hotspot_name": matched_hotspot_name,
+        "matched_hotspot_distance_km": matched_hotspot_distance_km,
+        "priority": priority if thermal_detected else "low",
         "nearest_facility_name": fac["name"] if fac else "None",
         "distance_to_facility_m": round(dist_m, 1) if fac else None,
         "landcover": landcover,
         "evidence": evidence_eval["evidence"],
         "anomaly_score": ml_res.anomaly_score,
-        "is_anomaly": ml_res.is_anomaly
+        "is_anomaly": ml_res.is_anomaly,
+        "nearest_fire_station": nearest_fs.model_dump() if nearest_fs else None,
+        "nearest_hospital": nearest_hosp.model_dump() if nearest_hosp else None,
+        "nearest_burn_trauma": nearest_burn.model_dump() if nearest_burn else None,
+        "emergency_search_radius_km": emergency_radius_km,
     }
 
     explanation_text, _ = await generate_explanation(analysis_payload)
@@ -480,8 +571,19 @@ async def analyse_location(payload: LocationAnalysisRequest):
         classification=evidence_eval["classification"] if thermal_detected else "unclassified",
         classification_method=evidence_eval["classification_method"],
         classification_confidence=evidence_eval["classification_confidence"] if thermal_detected else None,
-        risk_score=evidence_eval["risk_score"] if thermal_detected else 0.0,
-        priority=evidence_eval["priority"] if thermal_detected else "low",
+        risk_score=localized_risk_score,
+        event_risk_score=event_risk_score,
+        localized_risk_score=localized_risk_score,
+        risk_difference=risk_diff,
+        matched_hotspot_id=matched_hotspot_id,
+        matched_hotspot_name=matched_hotspot_name,
+        matched_hotspot_distance_km=matched_hotspot_distance_km,
+        nearest_fire_station=nearest_fs,
+        nearest_hospital=nearest_hosp,
+        nearest_burn_trauma=nearest_burn,
+        emergency_facilities=emergency_facilities,
+        emergency_search_radius_km=emergency_radius_km,
+        priority=priority if thermal_detected else "low",
         ml_status=ml_res.ml_status,
         anomaly_score=ml_res.anomaly_score if thermal_detected else 0.0,
         is_anomaly=ml_res.is_anomaly if thermal_detected else False,
@@ -520,6 +622,22 @@ async def chat(payload: ChatRequest):
         raise HTTPException(status_code=400, detail="Question must not be empty.")
 
     context = payload.context or {}
+    if context.get("latitude") is not None and context.get("longitude") is not None:
+        if "nearest_fire_station" not in context or "nearest_hospital" not in context:
+            try:
+                em = await emergency_service.find_nearest_emergency_facilities(
+                    float(context["latitude"]),
+                    float(context["longitude"])
+                )
+                if em.get("nearest_fire_station") and "nearest_fire_station" not in context:
+                    context["nearest_fire_station"] = em["nearest_fire_station"].model_dump()
+                if em.get("nearest_hospital") and "nearest_hospital" not in context:
+                    context["nearest_hospital"] = em["nearest_hospital"].model_dump()
+                if em.get("nearest_burn_trauma") and "nearest_burn_trauma" not in context:
+                    context["nearest_burn_trauma"] = em["nearest_burn_trauma"].model_dump()
+            except Exception as em_err:
+                pass
+
     response_text, llm_ok = await generate_chat_response(payload.question, context)
     return ChatResponse(
         response=response_text or "- AI explanation unavailable — Ollama/Qwen service is offline.",
