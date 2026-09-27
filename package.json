@@ -1,11 +1,11 @@
 {
   "name": "fieryvision-ai",
   "version": "1.0.0",
-  "description": "AI-Powered Industrial Fire Risk Detection and Satellite Intelligence Platform for Giaspura, Ludhiana, Punjab",
+  "description": "Global Industrial Fire Risk Detection and Satellite Intelligence Platform powered by NASA VIIRS and Isolation Forest Anomaly Detection",
   "scripts": {
     "dev": "node scripts/start-dev.js",
     "dev:frontend": "npm run dev --prefix frontend",
-    "dev:backend": "python -m uvicorn main:app --reload --port 8000 --app-dir backend",
+    "dev:backend": "python3 -m uvicorn main:app --reload --reload-dir backend/app --reload-dir ml --reload-exclude \"*/venv/*\" --reload-exclude \"*/node_modules/*\" --reload-exclude \"*/cache/*\" --port 8000 --app-dir backend",
     "build:frontend": "npm run build --prefix frontend",
     "test:backend": "python -m pytest",
     "install:frontend": "npm install --prefix frontend"

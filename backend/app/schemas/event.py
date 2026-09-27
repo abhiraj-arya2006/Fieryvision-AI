@@ -41,14 +41,31 @@ class CanonicalEventSchema(BaseModel):
 
     evidence: List[str] = Field(default_factory=list)
     explanation: Optional[str] = None
+    source: str = "NASA_FIRMS"
+    ml_status: str = "evaluated"
 
 class ActiveEventsResponse(BaseModel):
     total: int
-    data_mode: str  # active, cached, historical
+    data_mode: str  # live, cached, unavailable
+    freshness: str = "live"  # live, cached, unavailable
+    last_successful_fetch: Optional[str] = None
     last_updated: str
-    giaspura_center: Dict[str, float]
-    radius_km: float
+    live_event_count: int = 0
+    cached_event_count: int = 0
     events: List[CanonicalEventSchema]
+
+class FirmsStatusResponse(BaseModel):
+    api_reachable: bool
+    api_success: bool
+    live_event_count: int = 0
+    cached_event_count: int = 0
+    data_mode: str  # live, cached, unavailable
+    freshness: str = "live"
+    source: str = "NASA_FIRMS"
+    coverage: str = "WORLD"
+    last_successful_fetch: Optional[str] = None
+    message: Optional[str] = None
+    simulated_outage: bool = False
 
 class HealthResponse(BaseModel):
     status: str
@@ -64,10 +81,8 @@ class LocationAnalysisRequest(BaseModel):
 class LocationAnalysisResponse(BaseModel):
     latitude: float
     longitude: float
-    in_giaspura_zone: bool
-    distance_to_giaspura_center_m: float
     thermal_activity_detected: bool
-    assessment_mode: str  # evidence_based, supervised_ml, no_activity, insufficient_evidence
+    assessment_mode: str  # evidence_based, no_activity, insufficient_evidence
     active_anomalies_count: int
     nearest_facility_name: Optional[str] = None
     nearest_facility_type: Optional[str] = None
@@ -80,9 +95,11 @@ class LocationAnalysisResponse(BaseModel):
     classification_confidence: Optional[float] = None
     risk_score: float = 0.0
     priority: str = "low"
-    anomaly_score: Optional[float] = 0.0
+    ml_status: str = "not_evaluated"  # evaluated, not_evaluated, unavailable
+    anomaly_score: Optional[float] = None
     is_anomaly: bool = False
     anomaly_flag: bool = False
+    weather_summary: Optional[str] = None
     evidence: List[str] = Field(default_factory=list)
     explanation: Optional[str] = None
 

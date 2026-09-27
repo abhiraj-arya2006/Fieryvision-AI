@@ -1,6 +1,6 @@
 # FieryVision AI — Backend Service
 
-FastAPI backend & satellite intelligence integration layer for **Giaspura, Ludhiana, Punjab**.
+FastAPI backend & satellite intelligence integration layer for global industrial fire risk monitoring.
 
 ## Setup & Virtual Environment
 
@@ -41,20 +41,25 @@ Set environment variables in `.env`:
 
 ## Running the Backend Server
 
-Start the development server with Uvicorn:
+Start the development server:
 ```bash
-uvicorn main:app --reload --port 8000
+python main.py
+# or via uvicorn directly:
+uvicorn main:app --reload --reload-dir app --reload-exclude venv --port 8000
 ```
 Interactive API docs are available at: `http://localhost:8000/docs`
 
 ## Available Endpoints
 
 - `GET /api/health`: Health status, FIRMS status, and classification mode
-- `GET /api/active-events`: Active / recent FIRMS thermal events in Giaspura
+- `GET /api/firms/status`: NASA FIRMS connectivity status
+- `GET /api/firms/raw-detections`: Individual raw NASA FIRMS satellite observations
+- `GET /api/active-events`: Active / recent FIRMS thermal events with ML scoring
+- `GET /api/hotspots`: Clustered global hotspots with pagination & filtering
 - `GET /api/events/{event_id}`: Full canonical analysis for a specific event
-- `GET /api/facilities`: Cached Giaspura industrial facility sites
+- `GET /api/facilities`: Cached industrial facility sites
 - `GET /api/statistics`: Event summary & classification breakdown
-- `POST /api/analyse-location`: Coordinate investigation for arbitrary lat/lon
+- `POST /api/analyse-location`: Coordinate investigation for arbitrary global lat/lon
 - `GET /api/satellite-context/{event_id}`: Satellite radiometric context metadata
 
 ## Example Coordinate Analysis Request

@@ -1,6 +1,8 @@
 # Python
 venv/
 .venv/
+**/venv/
+**/.venv/
 __pycache__/
 *.py[cod]
 *.pyo
@@ -12,11 +14,14 @@ htmlcov/
 # Environment & Secrets
 .env
 .env.*
+**/.env
+**/.env.*
 !.env.example
 *.local
 
 # Node & Frontend
 node_modules/
+**/node_modules/
 dist/
 dist-ssr/
 *.log
@@ -26,3 +31,7 @@ dist-ssr/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Runtime databases and live data cache
+*.db
+backend/data/cache/

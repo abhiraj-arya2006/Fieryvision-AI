@@ -123,8 +123,8 @@ def _generate_grounded_answer(question: str, context: Optional[Dict[str, Any]] =
     # If context is completely empty (no coordinate analyzed yet)
     if lat is None and lon is None and not ctx:
         return (
-            "- FieryVision AI monitors thermal anomalies and industrial fire risk across a 15 km buffer around Giaspura, Ludhiana (30.8756°N, 75.8985°E).\n"
-            "- To analyze a specific coordinate, enter latitude and longitude above (or click a preset) and select 'Analyse Location'.\n"
+            "- FieryVision AI monitors thermal anomalies, active fires, and industrial heat emissions worldwide.\n"
+            "- To analyze a specific coordinate, enter latitude and longitude above (or click an event) and select 'Analyse Location'.\n"
             "- Once loaded, I can answer questions regarding industrial boundary status, nearest facilities, landcover, thermal power (FRP), persistence, and risk scores."
         )
 
@@ -135,18 +135,18 @@ def _generate_grounded_answer(question: str, context: Optional[Dict[str, Any]] =
             lines = [
                 f"- Nearest Facility: {fac_name or 'None identified nearby'} ({fac_type or 'Industrial Unit'}).",
                 f"- Distance: Approximately {dist_str} from {loc_str}.",
-                f"- Industrial Zone Status: {'Inside the designated Giaspura industrial cluster' if inside_zone else 'Outside designated industrial boundaries'}.",
+                f"- Industrial Zone Status: {'Inside mapped industrial perimeter' if inside_zone else 'Outside mapped industrial boundaries'}.",
                 f"- Land Cover: Classified as '{landcover}'."
             ]
             return "\n".join(lines)
         else:
             # Industrial zone status query
-            status_text = "YES: this coordinate is INSIDE the designated industrial cluster boundary." if inside_zone else "NO: this coordinate is OUTSIDE the designated industrial zone."
+            status_text = "YES: this coordinate is INSIDE a mapped industrial facility perimeter." if inside_zone else "NO: this coordinate is OUTSIDE mapped industrial perimeters."
             lines = [
                 f"- Status: {status_text}",
                 f"- Nearest Industrial Site: {fac_name or 'None recorded'} ({fac_type or 'General Industrial'}), located {dist_str} away.",
-                f"- Surface Classification: ESA WorldCover indicates '{landcover}'.",
-                f"- Operational Context: {'Higher likelihood of industrial process heat (furnaces, boilers, metalworks).' if inside_zone else 'Thermal events here typically correlate with biomass, open agricultural burning, or municipal waste.'}"
+                f"- Surface Classification: Landcover indicates '{landcover}'.",
+                f"- Operational Context: {'Higher likelihood of industrial process heat (furnaces, boilers, metalworks).' if inside_zone else 'Thermal events here typically correlate with biomass, open agricultural burning, or wildfire.'}"
             ]
             return "\n".join(lines)
 
@@ -172,7 +172,7 @@ def _generate_grounded_answer(question: str, context: Optional[Dict[str, Any]] =
         lines = [
             f"- Nearest Facility: {fac_name or 'None identified within 5 km'} ({fac_type or 'Industrial site'}).",
             f"- Distance: {dist_str} from target coordinates.",
-            f"- Zone Placement: {'Within designated industrial cluster' if inside_zone else 'Outside industrial perimeter'}.",
+            f"- Zone Placement: {'Within mapped industrial perimeter' if inside_zone else 'Outside industrial perimeter'}.",
             f"- Landcover: {landcover}."
         ]
         return "\n".join(lines)
@@ -226,7 +226,7 @@ def _generate_grounded_answer(question: str, context: Optional[Dict[str, Any]] =
         lines = [
             f"- Assessment: Classified as '{classification}' (Priority: {priority}).",
             *evidence_lines,
-            f"- Data Grounding: Grounded in NASA VIIRS thermal passes, ESA WorldCover, and Giaspura industrial GIS."
+            f"- Data Grounding: Grounded in NASA VIIRS thermal passes, ESA WorldCover, and OpenStreetMap industrial GIS."
         ]
         return "\n".join(lines)
 

@@ -9,7 +9,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="FieryVision AI Backend",
-    description="Early industrial fire risk detection and satellite intelligence backend for Giaspura, Ludhiana, Punjab.",
+    description="Global industrial fire risk detection and satellite intelligence backend powered by NASA VIIRS & ML anomaly scoring.",
     version="1.0.0"
 )
 
@@ -56,4 +56,33 @@ def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    root_dir = os.path.dirname(backend_dir)
+    app_dir = os.path.join(backend_dir, "app")
+    ml_dir = os.path.join(root_dir, "ml")
+    
+    watch_dirs = [app_dir]
+    if os.path.exists(ml_dir):
+        watch_dirs.append(ml_dir)
+        
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_dirs=watch_dirs,
+        reload_excludes=[
+            "venv",
+            ".venv",
+            "*/venv/*",
+            "*site-packages*",
+            "node_modules",
+            "*/node_modules/*",
+            "data/cache",
+            "*/data/cache/*",
+            "*.pyc",
+            "__pycache__",
+            "*.db"
+        ]
+    )

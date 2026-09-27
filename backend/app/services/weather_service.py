@@ -162,54 +162,28 @@ class WeatherService:
                     weather_cache.set(lat, lon, wind_data.model_dump())
                     return wind_data
                 else:
-                    logger.warning("Open-Meteo returned status %d: %s. Using atmospheric fallback.", response.status_code, response.text)
+                    logger.warning("Open-Meteo returned status %d: %s. Weather unavailable.", response.status_code, response.text)
         except Exception as exc:
-            logger.warning("Failed to reach Open-Meteo API: %s. Using atmospheric fallback.", exc)
+            logger.warning("Failed to reach Open-Meteo API: %s. Weather unavailable.", exc)
 
-        # Realistic atmospheric baseline fallback (e.g. westerly 18 km/h)
-        return self._generate_fallback_wind(lat, lon)
+        return self._generate_unavailable_wind(lat, lon)
 
-    def _generate_fallback_wind(self, lat: float, lon: float) -> WindDataSchema:
-        """Generate physically consistent meteorological estimate when Open-Meteo is unreachable."""
-        # Determinstic baseline based on latitude bands (Hadley cell / Ferrel westerlies)
-        if abs(lat) < 23.5:
-            base_dir = 75.0 if lat > 0 else 105.0  # Trade winds (Easterlies)
-            base_spd = 14.0
-        else:
-            base_dir = 260.0  # Prevailing westerlies
-            base_spd = 18.5
-
-        downwind = (base_dir + 180.0) % 360.0
-
-        hourly: List[HourlyWindForecast] = []
-        for h in range(1, 13):
-            shift = math.sin(h * 0.4) * 8.0
-            spd = max(5.0, base_spd + math.cos(h * 0.5) * 4.0)
-            dr = (base_dir + shift) % 360.0
-            dw = (dr + 180.0) % 360.0
-            hourly.append(HourlyWindForecast(
-                hour_offset=h,
-                time=f"+{h}h",
-                wind_speed_kmh=round(spd, 1),
-                wind_direction_deg=round(dr, 1),
-                downwind_bearing_deg=round(dw, 1),
-                cardinal=degrees_to_cardinal(dr)
-            ))
-
+    def _generate_unavailable_wind(self, lat: float, lon: float) -> WindDataSchema:
+        """Return honest unavailable meteorological schema when Open-Meteo is unreachable."""
         return WindDataSchema(
             latitude=lat,
             longitude=lon,
-            wind_speed_kmh=base_spd,
-            wind_direction_deg=base_dir,
-            downwind_bearing_deg=downwind,
-            cardinal_direction=degrees_to_cardinal(base_dir),
-            temperature_c=28.5,
-            humidity_percent=42.0,
-            hourly_forecast=hourly,
+            wind_speed_kmh=0.0,
+            wind_direction_deg=0.0,
+            downwind_bearing_deg=0.0,
+            cardinal_direction="N/A",
+            temperature_c=None,
+            humidity_percent=None,
+            hourly_forecast=[],
             timestamp=datetime.now(timezone.utc).isoformat(),
-            source="FieryVision Atmospheric Baseline Model (Open-Meteo Offline)",
+            source="Unavailable",
             is_cached=False,
-            attribution="Screening meteorological estimate generated offline"
+            attribution="Live meteorological data unavailable for this coordinate."
         )
 
 
@@ -251,16 +225,19 @@ class PlumeEngine:
 
             # Step hour by hour to trace directional shifts
             steps = min(horizon_hours, len(hourly_forecasts))
-            step_hours = max(1, horizon_hours // max(1, steps))
-
-            for step_idx in range(steps):
-                forecast_item = hourly_forecasts[step_idx] if step_idx < len(hourly_forecasts) else None
-                step_bearing = forecast_item.downwind_bearing_deg if forecast_item else current_bearing
-                step_speed = (forecast_item.wind_speed_kmh if forecast_item else current_speed) * settings.PLUME_SPEED_DAMPENING_FACTOR
-                step_dist = step_speed * step_hours
-
-                cur_lat, cur_lon = destination_point(cur_lat, cur_lon, step_bearing, step_dist)
+            if steps == 0:
+                cur_lat, cur_lon = destination_point(cur_lat, cur_lon, current_bearing, distance_km)
                 centerline_pts.append([round(cur_lat, 5), round(cur_lon, 5)])
+            else:
+                step_hours = max(1, horizon_hours // max(1, steps))
+                for step_idx in range(steps):
+                    forecast_item = hourly_forecasts[step_idx] if step_idx < len(hourly_forecasts) else None
+                    step_bearing = forecast_item.downwind_bearing_deg if forecast_item else current_bearing
+                    step_speed = (forecast_item.wind_speed_kmh if forecast_item else current_speed) * settings.PLUME_SPEED_DAMPENING_FACTOR
+                    step_dist = step_speed * step_hours
+
+                    cur_lat, cur_lon = destination_point(cur_lat, cur_lon, step_bearing, step_dist)
+                    centerline_pts.append([round(cur_lat, 5), round(cur_lon, 5)])
 
             # End tip of the plume centerline
             tip_lat, tip_lon = centerline_pts[-1]

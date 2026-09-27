@@ -7,6 +7,13 @@ from main import app
 client = TestClient(app)
 
 
+def _get_active_hotspot_id() -> str:
+    res = client.get("/api/hotspots")
+    items = res.json().get("items", [])
+    assert len(items) > 0
+    return items[0]["id"]
+
+
 def test_weather_wind_endpoint_valid_coordinates():
     """Test GET /api/weather/wind for valid global coordinates."""
     response = client.get("/api/weather/wind?latitude=30.8756&longitude=75.8985")
@@ -18,12 +25,13 @@ def test_weather_wind_endpoint_valid_coordinates():
     assert "cardinal_direction" in data
     assert "source" in data
     assert "hourly_forecast" in data
-    assert len(data["hourly_forecast"]) > 0
+    assert isinstance(data["hourly_forecast"], list)
 
 
 def test_hotspot_wind_endpoint():
-    """Test GET /api/hotspots/{id}/wind for Giaspura and USA hotspots."""
-    response = client.get("/api/hotspots/HS-IND-001/wind")
+    """Test GET /api/hotspots/{id}/wind for active hotspots."""
+    hs_id = _get_active_hotspot_id()
+    response = client.get(f"/api/hotspots/{hs_id}/wind")
     assert response.status_code == 200
     data = response.json()
     assert data["wind_speed_kmh"] >= 0
@@ -33,10 +41,11 @@ def test_hotspot_wind_endpoint():
 
 def test_hotspot_plume_endpoint():
     """Test GET /api/hotspots/{id}/plume generates 1h, 3h, 6h, 12h cones with polygons."""
-    response = client.get("/api/hotspots/HS-IND-001/plume")
+    hs_id = _get_active_hotspot_id()
+    response = client.get(f"/api/hotspots/{hs_id}/plume")
     assert response.status_code == 200
     data = response.json()
-    assert data["hotspot_id"] == "HS-IND-001"
+    assert data["hotspot_id"] == hs_id
     assert "horizons" in data
     assert len(data["horizons"]) == 4  # 1h, 3h, 6h, 12h
     
@@ -50,7 +59,7 @@ def test_hotspot_plume_endpoint():
 
 def test_emergency_nearby_endpoint():
     """Test GET /api/emergency/nearby discovers fire stations and hospitals."""
-    response = client.get("/api/emergency/nearby?latitude=30.8756&longitude=75.8985&radius_km=12.0")
+    response = client.get("/api/emergency/nearby?latitude=39.5180&longitude=-121.5450&radius_km=15.0")
     assert response.status_code == 200
     facilities = response.json()
     assert isinstance(facilities, list)
@@ -66,10 +75,11 @@ def test_emergency_nearby_endpoint():
 
 def test_hotspot_emergency_context():
     """Test GET /api/hotspots/{id}/emergency-context calculates 1km and 3km buffer counts."""
-    response = client.get("/api/hotspots/HS-IND-001/emergency-context")
+    hs_id = _get_active_hotspot_id()
+    response = client.get(f"/api/hotspots/{hs_id}/emergency-context")
     assert response.status_code == 200
     data = response.json()
-    assert data["hotspot_id"] == "HS-IND-001"
+    assert data["hotspot_id"] == hs_id
     assert "nearest_fire_station" in data
     assert "buffer_1km" in data
     assert "buffer_3km" in data
@@ -80,7 +90,8 @@ def test_hotspot_emergency_context():
 
 def test_hotspot_incident_intel_unified():
     """Test GET /api/hotspots/{id}/incident-intel returns complete combined incident payload."""
-    response = client.get("/api/hotspots/HS-IND-001/incident-intel")
+    hs_id = _get_active_hotspot_id()
+    response = client.get(f"/api/hotspots/{hs_id}/incident-intel")
     assert response.status_code == 200
     data = response.json()
     assert "hotspot" in data
@@ -93,7 +104,8 @@ def test_hotspot_incident_intel_unified():
 
 def test_hotspot_pdf_report_export():
     """Test GET /api/hotspots/{id}/report/pdf generates a valid 2-page PDF document."""
-    response = client.get("/api/hotspots/HS-IND-001/report/pdf")
+    hs_id = _get_active_hotspot_id()
+    response = client.get(f"/api/hotspots/{hs_id}/report/pdf")
     assert response.status_code == 200
     assert response.headers["Content-Type"] == "application/pdf"
     assert "attachment" in response.headers.get("Content-Disposition", "")

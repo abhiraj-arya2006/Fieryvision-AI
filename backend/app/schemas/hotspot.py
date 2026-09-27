@@ -89,6 +89,8 @@ class HotspotsListResponse(BaseModel):
 
 class HotspotAnalyticsResponse(BaseModel):
     total_active_hotspots: int
+    raw_detections_count: int = 0
+    ai_anomalies_count: int = 0
     emerging_hotspots_count: int
     persistent_hotspots_count: int
     high_intensity_hotspots_count: int

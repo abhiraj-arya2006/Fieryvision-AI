@@ -18,12 +18,13 @@ import api from '../services/api';
 import type { LocationAnalysisResponse } from '../types';
 import { getPriorityColor, formatDistance } from '../utils/formatters';
 
-// Giaspura presets for fast 1-click testing
+// Global presets for fast 1-click testing with live real FIRMS data
 const PRESETS = [
-  { name: 'Giaspura Focal Point Cluster', lat: 30.876210, lon: 75.899120 },
-  { name: 'Ludhiana Textile Dyeing Plant', lat: 30.874100, lon: 75.897250 },
-  { name: 'Dhandari Kalan Industrial Hub', lat: 30.881000, lon: 75.905000 },
-  { name: 'Giaspura Boiler & Casting Works', lat: 30.872800, lon: 75.895100 },
+  { name: 'Brazil (Cerrado Basin Fire)', lat: -8.3507, lon: -44.1636 },
+  { name: 'Western Australia (Active Fire)', lat: -20.7977, lon: 127.6389 },
+  { name: 'California (Sierra Nevada, USA)', lat: 37.6264, lon: -119.6088 },
+  { name: 'Southern Africa (Niassa Fire)', lat: -11.9659, lon: 36.4186 },
+  { name: 'London, UK (No Fire Baseline)', lat: 51.5074, lon: -0.1278 },
 ];
 
 const SUGGESTED_QUESTIONS = [
@@ -45,8 +46,8 @@ interface ChatMessage {
 export const AssistantPage: React.FC = () => {
   const [searchParams] = useSearchParams();
 
-  const [latitude, setLatitude] = useState<string>(searchParams.get('lat') || '30.875625');
-  const [longitude, setLongitude] = useState<string>(searchParams.get('lon') || '75.898481');
+  const [latitude, setLatitude] = useState<string>(searchParams.get('lat') || '39.5180');
+  const [longitude, setLongitude] = useState<string>(searchParams.get('lon') || '-121.5450');
   const [inputErrors, setInputErrors] = useState<{ latitude?: string; longitude?: string }>({});
 
   const [isAnalysing, setIsAnalysing] = useState<boolean>(false);
@@ -203,7 +204,7 @@ export const AssistantPage: React.FC = () => {
               FieryVision AI Location Investigation
             </h1>
             <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-              Coordinate-based AI assessment, thermal anomaly detection, and local Qwen LLM chat · Giaspura Study Area
+              Coordinate-based AI assessment, thermal anomaly detection, and local Qwen LLM chat · Global Multi-Continent
             </p>
           </div>
         </div>
@@ -224,7 +225,7 @@ export const AssistantPage: React.FC = () => {
             <label className="text-xs font-medium text-slate-300">Latitude</label>
             <input
               type="text"
-              placeholder="e.g. 30.875625"
+              placeholder="e.g. 39.5180"
               value={latitude}
               onChange={(e) => {
                 setLatitude(e.target.value);
@@ -243,7 +244,7 @@ export const AssistantPage: React.FC = () => {
             <label className="text-xs font-medium text-slate-300">Longitude</label>
             <input
               type="text"
-              placeholder="e.g. 75.898481"
+              placeholder="e.g. -121.5450"
               value={longitude}
               onChange={(e) => {
                 setLongitude(e.target.value);
@@ -309,7 +310,7 @@ export const AssistantPage: React.FC = () => {
           </div>
           <h3 className="text-base font-semibold text-white">Awaiting Location Coordinates</h3>
           <p className="text-xs text-slate-400 max-w-md">
-            Enter a latitude and longitude above, or select one of the Giaspura industrial presets to run real-time geospatial risk assessment.
+            Enter a latitude and longitude above, or select one of the global test presets to run real-time geospatial risk assessment.
           </p>
         </div>
       )}
@@ -375,18 +376,22 @@ export const AssistantPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Giaspura Buffer Proximity */}
+            {/* ML Anomaly Status */}
             <div className="glass-panel p-4 rounded-xl border border-cyan-500/20">
               <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                Giaspura Monitoring Zone
+                ML Anomaly Status
               </div>
               <div className="mt-1 text-lg font-bold font-mono text-white">
-                <span className={analysisData.in_giaspura_zone ? 'text-emerald-400' : 'text-slate-400'}>
-                  {analysisData.in_giaspura_zone ? 'Inside Zone (≤ 15km)' : 'Outside Regional Zone'}
+                <span className={
+                  analysisData.ml_status === 'evaluated' ? 'text-emerald-400' :
+                  analysisData.ml_status === 'not_evaluated' ? 'text-slate-400' : 'text-amber-400'
+                }>
+                  {analysisData.ml_status === 'evaluated' ? 'Evaluated' :
+                   analysisData.ml_status === 'not_evaluated' ? 'Not Evaluated' : 'Unavailable'}
                 </span>
               </div>
               <div className="text-[11px] text-slate-400 mt-2 font-mono">
-                {formatDistance(analysisData.distance_to_giaspura_center_m)} from center
+                {analysisData.inside_industrial_zone ? 'Inside Industrial Perimeter' : 'Outside Industrial Perimeter'}
               </div>
             </div>
 
@@ -444,7 +449,7 @@ export const AssistantPage: React.FC = () => {
                 <div className="flex justify-between">
                   <span className="text-slate-400">Nearest Facility:</span>
                   <span className="text-white font-medium text-right max-w-[170px] truncate" title={analysisData.nearest_facility_name || 'None'}>
-                    {analysisData.nearest_facility_name || 'None within 15km'}
+                    {analysisData.nearest_facility_name || 'None nearby'}
                   </span>
                 </div>
 
@@ -469,7 +474,7 @@ export const AssistantPage: React.FC = () => {
 
                 <div className="flex justify-between">
                   <span className="text-slate-400">Land Cover:</span>
-                  <span className="text-slate-300">{analysisData.landcover || 'Built-up / Industrial'}</span>
+                  <span className="text-slate-300">{analysisData.landcover || 'Unknown / unavailable'}</span>
                 </div>
               </div>
             </div>

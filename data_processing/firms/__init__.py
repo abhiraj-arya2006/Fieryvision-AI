@@ -10,8 +10,14 @@ from .constants import (
     EPSG_METRIC_UTM43N
 )
 from .loader import inspect_raw_firms, load_and_clean_firms
-from .clustering import cluster_thermal_observations
-from .feature_engineering import generate_event_features
+try:
+    from .clustering import cluster_thermal_observations
+except ImportError:
+    cluster_thermal_observations = None
+try:
+    from .feature_engineering import generate_event_features
+except ImportError:
+    generate_event_features = None
 
 __all__ = [
     "GIASPURA_LAT",

@@ -5,9 +5,11 @@
 
 import type {
   ActiveEventsResponse,
+  RawDetectionsResponse,
   CanonicalEvent,
   FacilitiesResponse,
   HealthResponse,
+  FirmsStatusResponse,
   LocationAnalysisRequest,
   LocationAnalysisResponse,
   SatelliteContextResponse,
@@ -81,10 +83,28 @@ export const api = {
   },
 
   /**
-   * Retrieve active FIRMS thermal anomalies in Giaspura
+   * Retrieve real NASA FIRMS connectivity status
+   */
+  async getFirmsStatus(): Promise<FirmsStatusResponse> {
+    return request<FirmsStatusResponse>('/api/firms/status');
+  },
+
+  /**
+   * Retrieve active FIRMS thermal anomalies worldwide
    */
   async getActiveEvents(): Promise<ActiveEventsResponse> {
     return request<ActiveEventsResponse>('/api/active-events');
+  },
+
+  /**
+   * Retrieve raw NASA FIRMS satellite observations directly
+   */
+  async getRawDetections(limit: number = 1000, min_frp?: number): Promise<RawDetectionsResponse> {
+    const query = new URLSearchParams();
+    if (limit) query.set('limit', String(limit));
+    if (min_frp != null) query.set('min_frp', String(min_frp));
+    const qs = query.toString();
+    return request<RawDetectionsResponse>(`/api/firms/raw-detections${qs ? `?${qs}` : ''}`);
   },
 
   /**
@@ -95,7 +115,7 @@ export const api = {
   },
 
   /**
-   * Retrieve cached industrial facilities in Giaspura
+   * Retrieve cached industrial facilities and active hotspots
    */
   async getFacilities(): Promise<FacilitiesResponse> {
     return request<FacilitiesResponse>('/api/facilities');

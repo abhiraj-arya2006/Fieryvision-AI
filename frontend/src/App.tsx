@@ -20,7 +20,6 @@ export const App: React.FC = () => {
             <Route path="/" element={<GlobalHotspotsPage />} />
             <Route path="/hotspots" element={<GlobalHotspotsPage />} />
             <Route path="/map" element={<MapDashboardPage />} />
-            <Route path="/giaspura" element={<MapDashboardPage />} />
             <Route path="/assistant" element={<AssistantPage />} />
             <Route path="/analysis" element={<AssistantPage />} />
             <Route path="/facilities" element={<FacilitiesPage />} />
@@ -38,7 +37,7 @@ export const App: React.FC = () => {
               <span>Industrial Fire Risk Intelligence & Satellite Monitoring</span>
             </div>
             <div className="flex items-center gap-4 text-[11px] font-mono">
-              <span>Study Area: Giaspura, Ludhiana, Punjab</span>
+              <span>Coverage: Global NASA VIIRS + OpenStreetMap</span>
               <span>·</span>
               <a 
                 href="http://localhost:8000/docs" 

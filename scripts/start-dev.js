@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 const rootDir = path.resolve(__dirname, '..');
 const frontendDir = path.join(rootDir, 'frontend');
@@ -14,12 +15,36 @@ console.log('\x1b[90m%s\x1b[0m', 'Press Ctrl+C to stop both processes.\n');
 
 const isWin = process.platform === 'win32';
 const npmCmd = isWin ? 'npm.cmd' : 'npm';
-const pythonCmd = isWin ? 'python' : 'python3';
+
+// Prefer backend/venv python if it exists to guarantee matching dependencies
+const venvPython = isWin
+  ? path.join(backendDir, 'venv', 'Scripts', 'python.exe')
+  : path.join(backendDir, 'venv', 'bin', 'python');
+const pythonCmd = fs.existsSync(venvPython) ? venvPython : (isWin ? 'python' : 'python3');
+
+// Configure reload directories so uvicorn does NOT watch backend/venv, node_modules, or cache
+const mlDir = path.join(rootDir, 'ml');
+const uvicornArgs = [
+  '-m', 'uvicorn', 'main:app',
+  '--reload',
+  '--reload-dir', 'app',
+];
+if (fs.existsSync(mlDir)) {
+  uvicornArgs.push('--reload-dir', path.relative(backendDir, mlDir));
+}
+uvicornArgs.push(
+  '--reload-exclude', 'venv',
+  '--reload-exclude', '.venv',
+  '--reload-exclude', '*/venv/*',
+  '--reload-exclude', '*site-packages*',
+  '--reload-exclude', 'node_modules',
+  '--reload-exclude', 'data/cache',
+  '--port', '8000'
+);
 
 // Start Backend
-const backend = spawn(pythonCmd, ['-m', 'uvicorn', 'main:app', '--reload', '--port', '8000'], {
+const backend = spawn(pythonCmd, uvicornArgs, {
   cwd: backendDir,
-  shell: true,
   stdio: 'pipe',
   env: { ...process.env, PYTHONUNBUFFERED: '1' }
 });
@@ -35,7 +60,6 @@ backend.stderr.on('data', (data) => {
 // Start Frontend
 const frontend = spawn(npmCmd, ['run', 'dev'], {
   cwd: frontendDir,
-  shell: true,
   stdio: 'pipe',
 });
 
